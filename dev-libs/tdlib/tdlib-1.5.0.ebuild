@@ -13,10 +13,10 @@ KEYWORDS="amd64 ~x86"
 IUSE=""
 
 DEPEND="sys-devel/gcc
-		dev-libs/openssl
-		sys-libs/zlib
-		dev-util/gperf
-		dev-util/cmake
+	dev-libs/openssl
+	sys-libs/zlib
+	dev-util/gperf
+	dev-util/cmake
 "
 RDEPEND="${DEPEND}"
 BDEPEND=""
