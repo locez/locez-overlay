@@ -5,7 +5,7 @@ EAPI=7
 
 DESCRIPTION="Cross-platform library for building Telegram clients"
 HOMEPAGE="https://core.telegram.org/tdlib"
-SRC_URI="https://github.com/tdlib/td/archive/v${PV}.tar.gz"
+SRC_URI="https://github.com/tdlib/td/archive/v${PV}.tar.gz -> ${P}.tar.gz"
 S="${WORKDIR}/td-${PV}"
 LICENSE="BSL-1.0"
 SLOT="0"
