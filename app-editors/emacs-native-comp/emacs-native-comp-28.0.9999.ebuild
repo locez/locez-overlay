@@ -16,7 +16,7 @@ DESCRIPTION="The extensible, customizable, self-documenting real-time display ed
 HOMEPAGE="https://www.gnu.org/software/emacs/"
 
 LICENSE="GPL-3+ FDL-1.3+ BSD HPND MIT W3C unicode PSF-2"
-IUSE="acl alsa aqua athena cairo dbus dynamic-loading games gconf gfile gif +gmp gpm gsettings gtk gtk2 gui gzip-el harfbuzz imagemagick +inotify jpeg json kerberos lcms libxml2 livecd m17n-lib mailutils motif png selinux sound source ssl svg systemd +threads tiff toolkit-scroll-bars wide-int Xaw3d xft +xpm xwidgets zlib"
+IUSE="acl alsa aqua athena cairo dbus dynamic-loading games gconf gfile gif +gmp gpm gsettings gtk gtk2 gui gzip-el harfbuzz imagemagick +inotify jpeg json kerberos lcms libxml2 livecd m17n-lib mailutils motif nativecomp png selinux sound source ssl svg systemd +threads tiff toolkit-scroll-bars wide-int Xaw3d xft +xpm xwidgets zlib"
 RESTRICT="test"
 
 RDEPEND="app-emacs/emacs-common-gentoo[games?,gui(-)?]
@@ -34,6 +34,7 @@ RDEPEND="app-emacs/emacs-common-gentoo[games?,gui(-)?]
 	libxml2? ( >=dev-libs/libxml2-2.2.0 )
 	mailutils? ( net-mail/mailutils[clients] )
 	!mailutils? ( net-libs/liblockfile )
+	nativecomp? ( sys-devel/gcc[jit] )
 	selinux? ( sys-libs/libselinux )
 	ssl? ( net-libs/gnutls:0= )
 	systemd? ( sys-apps/systemd )
@@ -102,8 +103,7 @@ RDEPEND="app-emacs/emacs-common-gentoo[games?,gui(-)?]
 	) )"
 
 DEPEND="${RDEPEND}
-	gui? ( !aqua? ( x11-base/xorg-proto ) )
-	sys-devel/gcc[jit]"
+	gui? ( !aqua? ( x11-base/xorg-proto ) )"
 
 BDEPEND="app-eselect/eselect-emacs
 	sys-apps/texinfo
@@ -112,6 +112,7 @@ BDEPEND="app-eselect/eselect-emacs
 
 RDEPEND="${RDEPEND}
 	app-eselect/eselect-emacs"
+
 
 EMACS_SUFFIX="emacs-${SLOT}-native-comp"
 SITEFILE="20${EMACS_SUFFIX}-gentoo.el"
@@ -188,6 +189,10 @@ src_configure() {
 				"USE flag \"cairo\" has no effect if \"xft\" is not set."
 			use m17n-lib && ewarn \
 				"USE flag \"m17n-lib\" has no effect if \"xft\" is not set."
+		fi
+
+		if use nativecomp; then
+			myconf+=" $(use_with nativecomp)"
 		fi
 
 		local f line
@@ -288,6 +293,10 @@ src_install() {
 	rm -rf "${ED}"/usr/share/{appdata,applications,icons}
 	rm -rf "${ED}/usr/$(get_libdir)"
 	rm -rf "${ED}"/var
+
+	# install eln files
+	insinto /usr/$(get_libdir)/emacs/${FULL_VERSION}/
+	doins -r native-lisp
 
 	# remove unused <version>/site-lisp dir
 	rm -rf "${ED}"/usr/share/emacs/${FULL_VERSION}/site-lisp
