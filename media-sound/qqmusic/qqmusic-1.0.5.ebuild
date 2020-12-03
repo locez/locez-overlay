@@ -14,69 +14,39 @@ SLOT="0"
 KEYWORDS="~amd64"
 
 RDEPEND="
-		app-accessibility/at-spi2-atk
-		app-accessibility/at-spi2-core
-		app-arch/bzip2
-		app-arch/lz4
-		app-arch/zstd
-		dev-libs/atk
-		dev-libs/expat
-		dev-libs/fribidi
-		dev-libs/glib
-		dev-libs/gmp
-		dev-libs/libbsd
-		dev-libs/libffi
-		dev-libs/libgcrypt
-		dev-libs/libgpg-error
-		dev-libs/libpcre
-		dev-libs/libtasn1
-		dev-libs/libunistring
-		dev-libs/nettle
-		dev-libs/nspr
-		dev-libs/nss
-		media-gfx/graphite2
-		media-libs/alsa-lib
-		media-libs/fontconfig
-		media-libs/freetype
-		media-libs/harfbuzz
-		media-libs/libepoxy
-		media-libs/libglvnd
-		media-libs/libpng
-		net-dns/libidn2
-		net-libs/gnutls
-		net-print/cups
-		sys-apps/dbus
-		sys-apps/systemd
-		sys-apps/util-linux
-		sys-devel/gcc
-		sys-libs/glibc
-		sys-libs/libcap
-		sys-libs/zlib
-		x11-libs/cairo
-		x11-libs/gdk-pixbuf
-		x11-libs/gtk+
-		x11-libs/libX11
-		x11-libs/libXScrnSaver
-		x11-libs/libXau
-		x11-libs/libXcomposite
-		x11-libs/libXcursor
-		x11-libs/libXdamage
-		x11-libs/libXdmcp
-		x11-libs/libXext
-		x11-libs/libXfixes
-		x11-libs/libXi
-		x11-libs/libXinerama
-		x11-libs/libXrandr
-		x11-libs/libXrender
-		x11-libs/libXtst
-		x11-libs/libxcb
-		x11-libs/pango
-		x11-libs/pixman"
+	app-accessibility/at-spi2-atk
+	app-accessibility/at-spi2-core
+	dev-libs/atk
+	dev-libs/expat
+	dev-libs/glib
+	dev-libs/nspr
+	dev-libs/nss
+	media-libs/alsa-lib
+	net-print/cups
+	sys-apps/dbus
+	sys-devel/gcc
+	sys-libs/glibc
+	x11-libs/cairo
+	x11-libs/gdk-pixbuf
+	x11-libs/gtk+
+	x11-libs/libX11
+	x11-libs/libXScrnSaver
+	x11-libs/libXcomposite
+	x11-libs/libXcursor
+	x11-libs/libXdamage
+	x11-libs/libXext
+	x11-libs/libXfixes
+	x11-libs/libXi
+	x11-libs/libXrandr
+	x11-libs/libXrender
+	x11-libs/libXtst
+	x11-libs/libxcb
+	x11-libs/pango"
 
 DEPEND="${RDEPEND}"
 
 pkg_setup() {
-		S="${WORKDIR}/"
+	S="${WORKDIR}/"
 }
 
 
