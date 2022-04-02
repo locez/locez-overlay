@@ -1,3 +1,5 @@
+## Note: 
+This overlay may not be maintained anymore, I mainly use Arch Linux now
 # locez-overlay
 
 
