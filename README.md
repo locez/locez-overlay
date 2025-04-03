@@ -1,5 +1,6 @@
 ## Note: 
-This overlay may not be maintained anymore, I mainly use Arch Linux now
+I come back to Gentoo!!
+
 # locez-overlay
 
 
