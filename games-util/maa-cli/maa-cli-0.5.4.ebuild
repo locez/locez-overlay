@@ -293,7 +293,7 @@ inherit cargo
 DESCRIPTION="A simple CLI for MAA (MaaAssistantArknights)"
 HOMEPAGE="https://github.com/MaaAssistantArknights/maa-cli"
 SRC_URI="
-	https://github.com/MaaAssistantArknights/maa-cli/archive/refs/tags/v$PV{}.tar.gz
+	https://github.com/MaaAssistantArknights/maa-cli/archive/refs/tags/v${PV}.tar.gz
 		-> ${P}.tar.gz
 	${CARGO_CRATE_URIS}
 "
