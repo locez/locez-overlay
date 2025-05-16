@@ -22,7 +22,6 @@ IUSE="bwrap"
 DEPEND=""
 RDEPEND="
 	bwrap? ( sys-apps/bubblewrap )
-	virtual/jre
 	x11-libs/gtk+:3
 	dev-libs/openssl
 	media-libs/mesa
