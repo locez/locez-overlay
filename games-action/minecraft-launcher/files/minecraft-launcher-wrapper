@@ -26,5 +26,4 @@ exec bwrap \
     --share-net \
     --new-session \
     --die-with-parent \
-    bash
-    #/opt/minecraft-launcher/minecraft-launcher "$@"
+    /opt/minecraft-launcher/minecraft-launcher "$@"
