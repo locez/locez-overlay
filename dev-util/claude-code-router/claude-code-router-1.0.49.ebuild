@@ -27,16 +27,16 @@ src_install() {
 	dodoc README.md LICENSE
 
 	insinto /opt/${PN}
-	doins -r ./dist/*
-	fperms a+x opt/${PN}/cli.js
+	doins -r ./dist
+	fperms a+x opt/${PN}/dist/cli.js
 
 	dodir /opt/bin
-	dosym -r /opt/${PN}/cli.js /opt/bin/ccr
+	dosym -r /opt/${PN}/dist/cli.js /opt/bin/ccr
 
 	# nodejs defaults to disabling deprecation warnings when running code
 	# from any path containing a node_modules directory. Since we're installing
 	# outside of the realm of npm, explicitly pass an option to disable
 	# deprecation warnings so it behaves the same as it does if installed via
 	# npm. It's proprietary; not like Gentoo users can fix the warnings anyway.
-	sed -i 's/env node/env -S node --no-deprecation/' "${ED}/opt/{PN}/cli.js"
+	sed -i 's/env node/env -S node --no-deprecation/' "${ED}/opt/{PN}/dist/cli.js"
 }
