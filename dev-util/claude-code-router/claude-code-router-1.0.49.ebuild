@@ -3,7 +3,7 @@
 
 EAPI=8
 
-DESCRIPTION="A powerful tool to route Claude Code requests to different models and customize any request."
+DESCRIPTION="A powerful tool to route Claude Code"
 HOMEPAGE="https://github.com/musistudio/claude-code-router"
 SRC_URI="https://registry.npmjs.org/@musistudio/claude-code-router/-/claude-code-router-${PV}.tgz"
 S="${WORKDIR}/package"
@@ -14,9 +14,7 @@ KEYWORDS="~amd64"
 
 RESTRICT="strip"
 
-RDEPEND="
-    dev-util/claude-code
-"
+RDEPEND="dev-util/claude-code"
 
 src_compile() {
 	# Skip, nothing to compile here.
