@@ -1,0 +1,4 @@
+# .gitignore
+metadata/md5-cache/
+distfiles/
+files/digest-*
