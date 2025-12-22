@@ -24,11 +24,11 @@ KEYWORDS=""
 # opencc  : OpenCC configs (Emoji, Traditional Chinese, etc.)
 # tencent : Large Tencent dictionary (optional due to size)
 # theme   : Install frontend configurations and color schemes
-IUSE="+base +english +opencc tencent theme"
+IUSE="+base +english +opencc tencent theme lua"
 
 # Runtime Dependency:
 # Requires independent librime-lua package for dynamic logic.
-RDEPEND="app-i18n/librime-lua"
+RDEPEND="lua? ( app-i18n/librime-lua )"
 DEPEND="${RDEPEND}"
 
 INSTALL_DIR="/usr/share/rime-data"
@@ -101,6 +101,11 @@ src_prepare() {
 		rm -rf opencc || die
 		# Note: rime_ice.schema.yaml references OpenCC.
 		# Removing files is safe but might cause benign warnings.
+	fi
+
+	if ! use lua; then
+		rm -rf lua || die
+		sed -i '/lua_/d' rime_ice.schema.yaml || die
 	fi
 }
 
