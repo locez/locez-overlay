@@ -2,8 +2,8 @@
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=8
-
-inherit git-r3
+LUA_COMPAT=( lua5-4 )
+inherit git-r3 lua-single
 
 DESCRIPTION="Rime ICE - A long-term maintained simplified Chinese Rime schema"
 HOMEPAGE="https://github.com/iDvel/rime-ice"
@@ -25,13 +25,22 @@ KEYWORDS=""
 # tencent : Large Tencent dictionary (optional due to size)
 # theme   : Install frontend configurations and color schemes
 IUSE="+base +english +opencc tencent theme lua"
-
+REQUIRED_USE="lua? ( ${LUA_REQUIRED_USE} )"
 # Runtime Dependency:
 # Requires independent librime-lua package for dynamic logic.
-RDEPEND="lua? ( app-i18n/librime-lua[lua_single_target_lua5-4] )"
+RDEPEND="
+	lua? (
+			${LUA_DEPS}
+			app-i18n/librime-lua[${LUA_SINGLE_USEDEP}]
+	)
+"
 DEPEND="${RDEPEND}"
 
 INSTALL_DIR="/usr/share/rime-data"
+
+pkg_setup() {
+	use lua && lua-single_pkg_setup
+}
 
 src_unpack() {
 	git-r3_src_unpack
