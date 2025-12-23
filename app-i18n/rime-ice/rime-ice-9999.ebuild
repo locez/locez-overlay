@@ -28,7 +28,7 @@ IUSE="+base +english +opencc tencent theme lua"
 
 # Runtime Dependency:
 # Requires independent librime-lua package for dynamic logic.
-RDEPEND="lua? ( app-i18n/librime-lua )"
+RDEPEND="lua? ( app-i18n/librime-lua[lua_single_target_lua5-4] )"
 DEPEND="${RDEPEND}"
 
 INSTALL_DIR="/usr/share/rime-data"
