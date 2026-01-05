@@ -70,7 +70,7 @@ jobs:
              gh issue create \
                 --title "[nvchecker] $NAME: $OLD -> $NEW" \
                 --body "$BODY" \
-                --label "enhancement"
+                --label "nvchecker"
             else
               echo "Issue for $NAME already exists (Issue #$EXISTS), skipping."
             fi
