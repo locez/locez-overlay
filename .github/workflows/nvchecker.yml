@@ -112,9 +112,9 @@ jobs:
                 - **Local version**: \`$LOCAL_VER\`
                 - **Upstream version**: \`$NEW\`
 
-              Please update the ebuild when you have time.
-              EOF
-              )
+          Please update the ebuild when you have time.
+          EOF
+          )
               gh issue create \
                 --title "$EXPECTED_TITLE" \
                 --body "$BODY" \
