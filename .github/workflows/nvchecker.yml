@@ -8,8 +8,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      issues: write
+      contents: write # Allow committing standard files
+      issues: write # Allow creating/editing issues
 
     steps:
       - name: Checkout repository
@@ -28,68 +28,94 @@ jobs:
       - name: Run nvchecker and compare
         id: check_updates
         run: |
-          # Check for new versions
+          # Path to the configuration file
           CONF=".github/workflows/nvchecker.toml"
+
+          # 1. Check for updates (nvchecker reads/writes .github/old_versions.json based on TOML config)
           nvchecker -c $CONF
 
-          # Compare with previous versions and output to JSON
-          # If no updates are found, create an empty array to avoid errors
+          # 2. Compare versions and output to updates.json in the current directory
           nvcmp -c $CONF --json > updates.json || echo "[]" > updates.json
 
           echo "Updates detected:"
           cat updates.json
 
-      - name: Create individual issues for updates
+      - name: Create or Update issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Iterate through each update entry in the JSON array
+          # Read updates.json directly from root
           cat updates.json | jq -c '.[]' | while read -r pkg; do
             NAME=$(echo "$pkg" | jq -r '.name')
-            OLD=$(echo "$pkg" | jq -r '.oldver')
+            # OLD_JSON is the version from the last check, used for fallback
+            OLD_JSON=$(echo "$pkg" | jq -r '.oldver')
             NEW=$(echo "$pkg" | jq -r '.newver')
 
-            EXPECTED_TITLE="[nvchecker] $NAME: $OLD -> $NEW"
+            # --- Detect Local Version ---
+            # Logic: Find the latest *.ebuild in the package directory, excluding 9999 versions.
 
+            LOCAL_VER="unknown"
+            if [ -d "$NAME" ]; then
+               # Find ebuild files, EXCLUDE *9999.ebuild, sort by version, and pick the latest one
+               LATEST_EBUILD=$(find "$NAME" -name "*.ebuild" ! -name "*9999.ebuild" | sort -V | tail -n1)
 
-            # 1. Search for an existing open issue (retrieve both number and title)
-            # jq '.[0]' takes the first result; returns null if nothing is found
+               if [ -n "$LATEST_EBUILD" ]; then
+                   # Extract filename: app-misc/bilihud/bilihud-1.2.3.ebuild -> bilihud-1.2.3.ebuild
+                   FILENAME=$(basename "$LATEST_EBUILD")
+
+                   # Extract version using regex to handle revision numbers (e.g., -r1)
+                   # 1. Remove package name prefix
+                   # 2. Remove .ebuild suffix
+                   PKG_NO_CAT=${NAME#*/} # Remove category: bilihud
+                   LOCAL_VER=$(echo "$FILENAME" | sed -E "s/^${PKG_NO_CAT}-//; s/\.ebuild$//")
+               fi
+            fi
+
+            # Fallback: If no local release ebuild is found (e.g. new package or only 9999 exists), use JSON record
+            if [ "$LOCAL_VER" == "unknown" ] || [ -z "$LOCAL_VER" ]; then
+                LOCAL_VER=$OLD_JSON
+            fi
+
+            # ---------------------------
+
+            # Expected title format: [nvchecker] category/package: LOCAL_VER -> NEW_VER
+            EXPECTED_TITLE="[nvchecker] $NAME: $LOCAL_VER -> $NEW"
+
+            # Search for existing open issue
             EXISTING=$(gh issue list --state open --search "[nvchecker] $NAME" --json number,title --jq '.[0]')
-            
-            # Extract issue number and title
-            ISSUE_NUM=$(echo "$EXISTING" | jq -r '.number')
-            CURRENT_TITLE=$(echo "$EXISTING" | jq -r '.title')
 
             if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
               # --- Case A: Issue exists ---
+              ISSUE_NUM=$(echo "$EXISTING" | jq -r '.number')
+              CURRENT_TITLE=$(echo "$EXISTING" | jq -r '.title')
+
               echo "Found open issue #$ISSUE_NUM for $NAME"
 
+              # Update title if it doesn't match the expected state (upstream bump or local state change)
               if [ "$CURRENT_TITLE" != "$EXPECTED_TITLE" ]; then
-                echo "Version bumped again! Updating issue #$ISSUE_NUM..."
-
-                # Update the title to the latest version
+                echo "Status changed! Updating issue #$ISSUE_NUM..."
                 gh issue edit "$ISSUE_NUM" --title "$EXPECTED_TITLE"
 
-                # Add a comment to notify that the version has changed again
-                gh issue comment "$ISSUE_NUM" --body "🚀 **Update detected**: Upstream version has been updated to \`$NEW\` (the version in the previous title is now outdated)."
+                # Add a comment to log the update
+                gh issue comment "$ISSUE_NUM" --body "🚀 **State Update**: \`$CURRENT_TITLE\` -> \`$EXPECTED_TITLE\`"
               else
                 echo "Issue is up-to-date. Skipping."
               fi
+
             else
-              # --- Case B: Issue does not exist, create a new one ---
+              # --- Case B: Create new issue ---
               echo "Creating new issue for $NAME..."
 
               BODY=$(cat <<EOF
-                New version detected by nvchecker:
-                **Package**: \`$NAME\`
-                **Current version**: \`$OLD\`
-                **New version**: \`$NEW\`
+              New version detected by nvchecker:
+                - **Package**: \`$NAME\`
+                - **Local version**: \`$LOCAL_VER\`
+                - **Upstream version**: \`$NEW\`
 
-          Please update the ebuild when you have time.
-          EOF
-          )
-
-             gh issue create \
+              Please update the ebuild when you have time.
+              EOF
+              )
+              gh issue create \
                 --title "$EXPECTED_TITLE" \
                 --body "$BODY" \
                 --label "nvchecker"
@@ -98,19 +124,21 @@ jobs:
 
       - name: Persist version changes
         run: |
-          # Sync known versions to avoid re-notifying on next run
           CONF=".github/workflows/nvchecker.toml"
           RECORD_FILE=".github/old_versions.json"
+
+          # 1. Update local records (nvchecker updates .github/old_versions.json based on TOML config)
           nvtake -c $CONF --all
 
-          # Commit updated version records back to the repository
+          # 2. Commit changes
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+
           if [ -f "$RECORD_FILE" ]; then
             git add "$RECORD_FILE"
             git commit -m "chore: update nvchecker version records [skip ci]" || echo "No changes to commit"
             git push
           else
-            echo "Error: $RECORD_FILE not found!"
+            echo "Error: $RECORD_FILE not found! Check your TOML configuration."
             exit 1
           fi
