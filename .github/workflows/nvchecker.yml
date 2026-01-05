@@ -57,9 +57,9 @@ jobs:
               BODY=$(cat <<EOF
 New version detected by nvchecker:
 
-- **Package**: \`$NAME\`
-- **Current version**: \`$OLD\`
-- **New version**: \`$NEW\`
+**Package**: \`$NAME\`
+**Current version**: \`$OLD\`
+**New version**: \`$NEW\`
 
 Please update the ebuild when you have time.
 EOF
