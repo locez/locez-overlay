@@ -85,8 +85,11 @@ jobs:
           # Commit updated version records back to the repository
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          if [ -f .versions.json ]; then
-            git add .versions.json
+          if [ -f old_versions.json ]; then
+            git add old_versions.json
             git commit -m "chore: update nvchecker version records [skip ci]" || echo "No changes to commit"
             git push
+          else
+            echo "Error: old_versions.json not found!"
+            exit 1
           fi
