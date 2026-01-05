@@ -27,6 +27,7 @@ jobs:
       - name: Run nvchecker and compare
         id: check_updates
         run: |
+          cd .github/workflows/
           # Check for new versions
           nvchecker -c nvchecker.toml
 
@@ -42,6 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Iterate through each update entry in the JSON array
+          cd .github/workflows/
           cat updates.json | jq -c '.[]' | while read -r pkg; do
             NAME=$(echo "$pkg" | jq -r '.name')
             OLD=$(echo "$pkg" | jq -r '.oldver')
@@ -76,6 +78,7 @@ jobs:
       - name: Persist version changes
         run: |
           # Sync known versions to avoid re-notifying on next run
+          cd .github/workflows/
           nvtake -c nvchecker.toml --all
 
           # Commit updated version records back to the repository
