@@ -22,7 +22,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install nvchecker jq
+          pip install --upgrade pip
+          pip install nvchecker jq packaging
 
       - name: Run nvchecker and compare
         id: check_updates
