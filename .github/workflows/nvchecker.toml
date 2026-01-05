@@ -6,7 +6,6 @@ newver = "new_versions.json"
 ["app-i18n/rime-ice"]
 source = "github"
 github = "iDvel/rime-ice"
-use_latest_release = true
 
 ["app-misc/bilihud"]
 source = "github"
