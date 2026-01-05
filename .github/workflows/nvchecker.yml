@@ -1,8 +1,8 @@
 name: Check Package Updates
 on:
   schedule:
-    - cron: '0 2 * * *' # Run daily at 02:00 UTC
-  workflow_dispatch:    # Allow manual trigger
+    - cron: "0 2 * * *" # Run daily at 02:00 UTC
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   check:
@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: Install dependencies
         run: |
@@ -29,11 +29,11 @@ jobs:
         run: |
           # Check for new versions
           nvchecker -c nvchecker.toml
-          
+
           # Compare with previous versions and output to JSON
           # If no updates are found, create an empty array to avoid errors
           nvcmp -c nvchecker.toml --json > updates.json || echo "[]" > updates.json
-          
+
           echo "Updates detected:"
           cat updates.json
 
@@ -46,24 +46,23 @@ jobs:
             NAME=$(echo "$pkg" | jq -r '.name')
             OLD=$(echo "$pkg" | jq -r '.oldver')
             NEW=$(echo "$pkg" | jq -r '.newver')
-            
+
             # Check if an open issue already exists for this package to avoid spam
             # We search for issues with the specific [nvchecker] prefix and package name
             EXISTS=$(gh issue list --state open --search "[nvchecker] $NAME" --json number --jq '.[0].number')
-            
+
             if [ -z "$EXISTS" ]; then
               echo "Creating issue for $NAME..."
 
               BODY=$(cat <<EOF
-New version detected by nvchecker:
+                New version detected by nvchecker:
+                **Package**: \`$NAME\`
+                **Current version**: \`$OLD\`
+                **New version**: \`$NEW\`
 
-**Package**: \`$NAME\`
-**Current version**: \`$OLD\`
-**New version**: \`$NEW\`
-
-Please update the ebuild when you have time.
-EOF
-)
+          Please update the ebuild when you have time.
+          EOF
+          )
 
              gh issue create \
                 --title "[nvchecker] $NAME: $OLD -> $NEW" \
@@ -78,7 +77,7 @@ EOF
         run: |
           # Sync known versions to avoid re-notifying on next run
           nvtake -c nvchecker.toml --all
-          
+
           # Commit updated version records back to the repository
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
