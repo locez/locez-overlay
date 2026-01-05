@@ -53,15 +53,21 @@ jobs:
             
             if [ -z "$EXISTS" ]; then
               echo "Creating issue for $NAME..."
-              gh issue create \
-                --title "[nvchecker] $NAME: $OLD -> $NEW" \
-                --body "New version detected by nvchecker:
-                
+
+              BODY=$(cat <<EOF
+New version detected by nvchecker:
+
 - **Package**: \`$NAME\`
 - **Current version**: \`$OLD\`
 - **New version**: \`$NEW\`
 
-Please update the ebuild when you have time." \
+Please update the ebuild when you have time.
+EOF
+)
+
+             gh issue create \
+                --title "[nvchecker] $NAME: $OLD -> $NEW" \
+                --body "$BODY" \
                 --label "enhancement"
             else
               echo "Issue for $NAME already exists (Issue #$EXISTS), skipping."
