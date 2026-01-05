@@ -10,7 +10,6 @@ use_latest_release = true
 ["app-misc/bilihud"]
 source = "github"
 github = "locez/bilihud"
-use_latest_release = true
 
 ["dev-python/browser-cookie3"]
 source = "pypi"
@@ -22,8 +21,7 @@ pypi = "pure-protobuf"
 
 ["dev-util/claude-code-router"]
 source = "github"
-github = "locez/claude-code-router"
-use_latest_release = true
+github = "musistudio/claude-code-router"
 
 ["games-util/maa-cli"]
 source = "github"
