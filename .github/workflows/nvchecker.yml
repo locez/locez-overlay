@@ -1,0 +1,83 @@
+name: Check Package Updates
+on:
+  schedule:
+    - cron: '0 2 * * *' # Run daily at 02:00 UTC
+  workflow_dispatch:    # Allow manual trigger
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install nvchecker jq
+
+      - name: Run nvchecker and compare
+        id: check_updates
+        run: |
+          # Check for new versions
+          nvchecker -c nvchecker.toml
+          
+          # Compare with previous versions and output to JSON
+          # If no updates are found, create an empty array to avoid errors
+          nvcmp -c nvchecker.toml --json > updates.json || echo "[]" > updates.json
+          
+          echo "Updates detected:"
+          cat updates.json
+
+      - name: Create individual issues for updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Iterate through each update entry in the JSON array
+          cat updates.json | jq -c '.[]' | while read -r pkg; do
+            NAME=$(echo "$pkg" | jq -r '.name')
+            OLD=$(echo "$pkg" | jq -r '.oldver')
+            NEW=$(echo "$pkg" | jq -r '.newver')
+            
+            # Check if an open issue already exists for this package to avoid spam
+            # We search for issues with the specific [nvchecker] prefix and package name
+            EXISTS=$(gh issue list --state open --search "[nvchecker] $NAME" --json number --jq '.[0].number')
+            
+            if [ -z "$EXISTS" ]; then
+              echo "Creating issue for $NAME..."
+              gh issue create \
+                --title "[nvchecker] $NAME: $OLD -> $NEW" \
+                --body "New version detected by nvchecker:
+                
+- **Package**: \`$NAME\`
+- **Current version**: \`$OLD\`
+- **New version**: \`$NEW\`
+
+Please update the ebuild when you have time." \
+                --label "enhancement"
+            else
+              echo "Issue for $NAME already exists (Issue #$EXISTS), skipping."
+            fi
+          done
+
+      - name: Persist version changes
+        run: |
+          # Sync known versions to avoid re-notifying on next run
+          nvtake -c nvchecker.toml --all
+          
+          # Commit updated version records back to the repository
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if [ -f .versions.json ]; then
+            git add .versions.json
+            git commit -m "chore: update nvchecker version records [skip ci]" || echo "No changes to commit"
+            git push
+          fi

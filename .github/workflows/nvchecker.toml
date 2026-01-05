@@ -1,0 +1,33 @@
+[__config__]
+# Version records file to be committed by GitHub Actions
+oldver = ".versions.json"
+
+[app-i18n/rime-ice]
+source = "github"
+github = "iDvel/rime-ice"
+use_latest_release = true
+
+[app-misc/bilihud]
+source = "github"
+github = "locez/bilihud"
+use_latest_release = true
+
+[dev-python/browser-cookie3]
+source = "pypi"
+pypi = "browser-cookie3"
+
+[dev-python/pure-protobuf]
+source = "pypi"
+pypi = "pure-protobuf"
+
+[dev-util/claude-code-router]
+source = "github"
+github = "locez/claude-code-router"
+use_latest_release = true
+
+[games-util/maa-cli]
+source = "github"
+github = "MaaAssistantArknights/maa-cli"
+use_latest_release = true
+
+
