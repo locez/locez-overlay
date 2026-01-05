@@ -60,7 +60,7 @@ jobs:
             ISSUE_NUM=$(echo "$EXISTING" | jq -r '.number')
             CURRENT_TITLE=$(echo "$EXISTING" | jq -r '.title')
 
-            if [ "$ISSUE_NUM" != "null" ]; then
+            if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
               # --- Case A: Issue exists ---
               echo "Found open issue #$ISSUE_NUM for $NAME"
 
