@@ -5,12 +5,15 @@ on:
   pull_request:
     branches: [ main, master ]
   schedule:
-    - cron: '0 0 * * 1' # Run full scan every Monday
+    - cron: '0 0 * * 1'
 
 jobs:
   pkgcheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Run pkgcheck
-        uses: gentoo/gh-actions/pkgcheck@master
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --net 
