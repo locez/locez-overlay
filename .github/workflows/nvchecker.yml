@@ -28,13 +28,14 @@ jobs:
       - name: Run nvchecker and compare
         id: check_updates
         run: |
+          CONF=".github/workflows/nvchecker.toml"
           cd .github/workflows/
           # Check for new versions
-          nvchecker -c nvchecker.toml
+          nvchecker -c $CONF
 
           # Compare with previous versions and output to JSON
           # If no updates are found, create an empty array to avoid errors
-          nvcmp -c nvchecker.toml --json > updates.json || echo "[]" > updates.json
+          nvcmp -c $CONF --json > updates.json || echo "[]" > updates.json
 
           echo "Updates detected:"
           cat updates.json
@@ -44,7 +45,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Iterate through each update entry in the JSON array
-          cd .github/workflows/
           cat updates.json | jq -c '.[]' | while read -r pkg; do
             NAME=$(echo "$pkg" | jq -r '.name')
             OLD=$(echo "$pkg" | jq -r '.oldver')
@@ -79,17 +79,18 @@ jobs:
       - name: Persist version changes
         run: |
           # Sync known versions to avoid re-notifying on next run
-          cd .github/workflows/
-          nvtake -c nvchecker.toml --all
+          CONF=".github/workflows/nvchecker.toml"
+          RECORD_FILE=".github/old_versions.json"
+          nvtake -c $CONF --all
 
           # Commit updated version records back to the repository
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          if [ -f old_versions.json ]; then
-            git add old_versions.json
+          if [ -f "$RECORD_FILE" ]; then
+            git add "$RECORD_FILE"
             git commit -m "chore: update nvchecker version records [skip ci]" || echo "No changes to commit"
             git push
           else
-            echo "Error: old_versions.json not found!"
+            echo "Error: $RECORD_FILE not found!"
             exit 1
           fi
