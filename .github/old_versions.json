@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "data": {
+    "app-i18n/rime-ice": {
+      "version": "20260104.191636",
+      "revision": "51003473600d90ff4b46004a5122ee1b98210606",
+      "url": "https://github.com/iDvel/rime-ice/commit/51003473600d90ff4b46004a5122ee1b98210606"
+    },
+    "app-misc/bilihud": {
+      "version": "20251221.054612",
+      "revision": "a63e5bc79b033250a5689dd492027443df071e21",
+      "url": "https://github.com/locez/bilihud/commit/a63e5bc79b033250a5689dd492027443df071e21"
+    },
+    "dev-python/browser-cookie3": {
+      "version": "0.20.1",
+      "url": "https://pypi.org/project/browser-cookie3/0.20.1/"
+    },
+    "dev-python/pure-protobuf": {
+      "version": "3.1.5",
+      "url": "https://pypi.org/project/pure-protobuf/3.1.5/"
+    },
+    "dev-util/claude-code-router": {
+      "version": "20260104.072305",
+      "revision": "b1e057f9f25abd42088baa81af46f794c7ddd561",
+      "url": "https://github.com/musistudio/claude-code-router/commit/b1e057f9f25abd42088baa81af46f794c7ddd561"
+    },
+    "games-util/maa-cli": {
+      "version": "v0.6.0",
+      "gitref": "refs/tags/v0.6.0",
+      "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.6.0"
+    }
+  }
+}
