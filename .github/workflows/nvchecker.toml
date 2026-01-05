@@ -1,6 +1,7 @@
 [__config__]
 # Version records file to be committed by GitHub Actions
-oldver = ".versions.json"
+oldver = "old_versions.json"
+newver = "new_versions.json"
 
 ["app-i18n/rime-ice"]
 source = "github"
