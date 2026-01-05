@@ -49,12 +49,35 @@ jobs:
             OLD=$(echo "$pkg" | jq -r '.oldver')
             NEW=$(echo "$pkg" | jq -r '.newver')
 
-            # Check if an open issue already exists for this package to avoid spam
-            # We search for issues with the specific [nvchecker] prefix and package name
-            EXISTS=$(gh issue list --state open --search "[nvchecker] $NAME" --json number --jq '.[0].number')
+            EXPECTED_TITLE="[nvchecker] $NAME: $OLD -> $NEW"
 
-            if [ -z "$EXISTS" ]; then
-              echo "Creating issue for $NAME..."
+
+            # 1. Search for an existing open issue (retrieve both number and title)
+            # jq '.[0]' takes the first result; returns null if nothing is found
+            EXISTING=$(gh issue list --state open --search "[nvchecker] $NAME" --json number,title --jq '.[0]')
+            
+            # Extract issue number and title
+            ISSUE_NUM=$(echo "$EXISTING" | jq -r '.number')
+            CURRENT_TITLE=$(echo "$EXISTING" | jq -r '.title')
+
+            if [ "$ISSUE_NUM" != "null" ]; then
+              # --- Case A: Issue exists ---
+              echo "Found open issue #$ISSUE_NUM for $NAME"
+
+              if [ "$CURRENT_TITLE" != "$EXPECTED_TITLE" ]; then
+                echo "Version bumped again! Updating issue #$ISSUE_NUM..."
+
+                # Update the title to the latest version
+                gh issue edit "$ISSUE_NUM" --title "$EXPECTED_TITLE"
+
+                # Add a comment to notify that the version has changed again
+                gh issue comment "$ISSUE_NUM" --body "🚀 **Update detected**: Upstream version has been updated to \`$NEW\` (the version in the previous title is now outdated)."
+              else
+                echo "Issue is up-to-date. Skipping."
+              fi
+            else
+              # --- Case B: Issue does not exist, create a new one ---
+              echo "Creating new issue for $NAME..."
 
               BODY=$(cat <<EOF
                 New version detected by nvchecker:
@@ -67,11 +90,9 @@ jobs:
           )
 
              gh issue create \
-                --title "[nvchecker] $NAME: $OLD -> $NEW" \
+                --title "$EXPECTED_TITLE" \
                 --body "$BODY" \
                 --label "nvchecker"
-            else
-              echo "Issue for $NAME already exists (Issue #$EXISTS), skipping."
             fi
           done
 
