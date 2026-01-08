@@ -32,6 +32,9 @@ RDEPEND="
 	dev-python/browser-cookie3[${PYTHON_USEDEP}]
 	app-arch/brotli[python,${PYTHON_USEDEP}]
 	dev-python/pure-protobuf[${PYTHON_USEDEP}]
+	dev-python/qrcode[${PYTHON_USEDEP}]
+	dev-python/keyring[${PYTHON_USEDEP}]
+	dev-python/pillow[${PYTHON_USEDEP}]
 "
 DEPEND="${RDEPEND}"
 
@@ -44,3 +47,4 @@ python_install_all() {
 	domenu bilihud.desktop
 	newicon src/bilihud/assets/icon.png bilihud.png
 }
+
