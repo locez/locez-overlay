@@ -4,6 +4,7 @@
 EAPI=8
 
 DISTUTILS_USE_PEP517=hatchling
+DISTUTILS_EXT=1
 PYTHON_COMPAT=( python3_{10..13} )
 
 inherit distutils-r1 desktop
@@ -35,11 +36,24 @@ RDEPEND="
 	dev-python/qrcode[${PYTHON_USEDEP}]
 	dev-python/keyring[${PYTHON_USEDEP}]
 	dev-python/pillow[${PYTHON_USEDEP}]
+	dev-qt/qtbase:6
+	dev-qt/qtwayland:6
+	kde-plasma/layer-shell-qt
 "
-DEPEND="${RDEPEND}"
+BDEPEND=""
 
 src_prepare() {
 	distutils-r1_src_prepare
+    # Remove hatch-build-scripts from build dependencies as it's not in standard Gentoo repos
+    sed -i -e '/hatch-build-scripts/d' pyproject.toml
+    # Remove the hook configuration block to prevent hatchling from erroring
+    sed -i -e '/\[tool.hatch.build.hooks.build-scripts\]/,/artifacts =/d' pyproject.toml
+}
+
+src_compile() {
+    # Manually build the bridge since we removed the hook
+    ./src/bilihud/build_bridge.sh
+    distutils-r1_src_compile
 }
 
 python_install_all() {
