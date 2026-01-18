@@ -2,14 +2,14 @@
   "version": 2,
   "data": {
     "app-i18n/rime-ice": {
-      "version": "20260104.191636",
-      "revision": "51003473600d90ff4b46004a5122ee1b98210606",
-      "url": "https://github.com/iDvel/rime-ice/commit/51003473600d90ff4b46004a5122ee1b98210606"
+      "version": "20260117.100309",
+      "revision": "c02c83c9e91f3e081052441330df00667abc64a8",
+      "url": "https://github.com/iDvel/rime-ice/commit/c02c83c9e91f3e081052441330df00667abc64a8"
     },
     "app-misc/bilihud": {
-      "version": "20260116.121810",
-      "revision": "a8d672b1111fd037eb1dd98317136742a28fd216",
-      "url": "https://github.com/locez/bilihud/commit/a8d672b1111fd037eb1dd98317136742a28fd216"
+      "version": "20260117.125734",
+      "revision": "4261f576d9676e332a4c8c66199d7f313a31e88b",
+      "url": "https://github.com/locez/bilihud/commit/4261f576d9676e332a4c8c66199d7f313a31e88b"
     },
     "dev-python/browser-cookie3": {
       "version": "0.20.1",
@@ -25,9 +25,9 @@
       "url": "https://github.com/musistudio/claude-code-router/commit/c73fe0d49d7cb0e8b8c7d0b1677c170b92d2a2ae"
     },
     "games-util/maa-cli": {
-      "version": "v0.6.0",
-      "gitref": "refs/tags/v0.6.0",
-      "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.6.0"
+      "version": "v0.7.0",
+      "gitref": "refs/tags/v0.7.0",
+      "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.0"
     }
   }
 }
