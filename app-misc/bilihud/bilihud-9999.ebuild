@@ -5,7 +5,7 @@ EAPI=8
 
 DISTUTILS_USE_PEP517=hatchling
 DISTUTILS_EXT=1
-PYTHON_COMPAT=( python3_{10..13} )
+PYTHON_COMPAT=( python3_{13..14} )
 
 inherit distutils-r1 desktop
 
@@ -61,4 +61,3 @@ python_install_all() {
 	domenu bilihud.desktop
 	newicon src/bilihud/assets/icon.png bilihud.png
 }
-
