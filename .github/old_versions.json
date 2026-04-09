@@ -25,9 +25,9 @@
       "url": "https://github.com/musistudio/claude-code-router/commit/e270dea523b8ac025ab9b7b0708dc170efa52d8a"
     },
     "games-util/maa-cli": {
-      "version": "v0.7.2",
-      "gitref": "refs/tags/v0.7.2",
-      "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.2"
+      "version": "v0.7.4",
+      "gitref": "refs/tags/v0.7.4",
+      "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.4"
     }
   }
 }
