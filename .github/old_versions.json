@@ -2,14 +2,14 @@
   "version": 2,
   "data": {
     "app-i18n/rime-ice": {
-      "version": "20260531.171321",
-      "revision": "3e42f339d1c46628908d1edc73767491d9bc3a8e",
-      "url": "https://github.com/iDvel/rime-ice/commit/3e42f339d1c46628908d1edc73767491d9bc3a8e"
+      "version": "20260601.112535",
+      "revision": "04dcf953f8527fb6207b2bdbafd2e9a7492bf348",
+      "url": "https://github.com/iDvel/rime-ice/commit/04dcf953f8527fb6207b2bdbafd2e9a7492bf348"
     },
     "app-misc/bilihud": {
-      "version": "20260531.112326",
-      "revision": "5acce8004ea1d499f65416fcefa526957867b2b6",
-      "url": "https://github.com/locez/bilihud/commit/5acce8004ea1d499f65416fcefa526957867b2b6"
+      "version": "20260601.175118",
+      "revision": "79487aeb42e73a30069026dc6ba7208f6c1d9fb4",
+      "url": "https://github.com/locez/bilihud/commit/79487aeb42e73a30069026dc6ba7208f6c1d9fb4"
     },
     "dev-python/browser-cookie3": {
       "version": "0.20.1",
