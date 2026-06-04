@@ -2,9 +2,9 @@
   "version": 2,
   "data": {
     "app-i18n/rime-ice": {
-      "version": "20260601.112535",
-      "revision": "04dcf953f8527fb6207b2bdbafd2e9a7492bf348",
-      "url": "https://github.com/iDvel/rime-ice/commit/04dcf953f8527fb6207b2bdbafd2e9a7492bf348"
+      "version": "20260603.122741",
+      "revision": "476bb816a0b2289e65a357085e36c501682f17b1",
+      "url": "https://github.com/iDvel/rime-ice/commit/476bb816a0b2289e65a357085e36c501682f17b1"
     },
     "app-misc/bilihud": {
       "version": "20260601.175118",
