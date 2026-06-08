@@ -27,3 +27,7 @@ github = "musistudio/claude-code-router"
 source = "github"
 github = "MaaAssistantArknights/maa-cli"
 use_latest_release = true
+
+["net-misc/tsshd"]
+source = "github"
+github = "trzsz/tsshd"
