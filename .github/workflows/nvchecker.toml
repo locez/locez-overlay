@@ -22,3 +22,5 @@ pypi = "pure-protobuf"
 ["net-misc/tsshd"]
 source = "github"
 github = "trzsz/tsshd"
+use_latest_release = true
+prefix = "v"

@@ -19,6 +19,11 @@
       "version": "3.1.5",
       "url": "https://pypi.org/project/pure-protobuf/3.1.5/"
     },
+    "net-misc/tsshd": {
+      "version": "0.1.8",
+      "gitref": "refs/tags/v0.1.8",
+      "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.8"
+    },
     "dev-util/claude-code-router": {
       "version": "20260304.054737",
       "revision": "e270dea523b8ac025ab9b7b0708dc170efa52d8a",
