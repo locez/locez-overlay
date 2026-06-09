@@ -23,21 +23,5 @@
       "version": "0.1.8",
       "gitref": "refs/tags/v0.1.8",
       "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.8"
-    },
-    "dev-util/claude-code-router": {
-      "version": "20260304.054737",
-      "revision": "e270dea523b8ac025ab9b7b0708dc170efa52d8a",
-      "url": "https://github.com/musistudio/claude-code-router/commit/e270dea523b8ac025ab9b7b0708dc170efa52d8a"
-    },
-    "games-util/maa-cli": {
-      "version": "v0.7.5",
-      "gitref": "refs/tags/v0.7.5",
-      "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.5"
-    },
-    "net-misc/tsshd": {
-      "version": "20260620.235652",
-      "revision": "7713cd6be7b15ef781cd57aa215933c914e2f01d",
-      "url": "https://github.com/trzsz/tsshd/commit/7713cd6be7b15ef781cd57aa215933c914e2f01d"
-    }
   }
 }
