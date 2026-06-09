@@ -28,6 +28,11 @@
       "version": "v0.7.5",
       "gitref": "refs/tags/v0.7.5",
       "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.5"
+    },
+    "net-misc/tsshd": {
+      "version": "20260607.040029",
+      "revision": "0bd47e6b6bc7ddc608a27842a2081224afb0c66c",
+      "url": "https://github.com/trzsz/tsshd/commit/0bd47e6b6bc7ddc608a27842a2081224afb0c66c"
     }
   }
 }
