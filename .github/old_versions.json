@@ -2,9 +2,9 @@
   "version": 2,
   "data": {
     "app-i18n/rime-ice": {
-      "version": "20260618.104219",
-      "revision": "4e3e23212dbd5d5ee5fb87fccb35b48072a7ad13",
-      "url": "https://github.com/iDvel/rime-ice/commit/4e3e23212dbd5d5ee5fb87fccb35b48072a7ad13"
+      "version": "20260620.083210",
+      "revision": "3ec476e9ca7f236d405481b6db6bb613754bc72d",
+      "url": "https://github.com/iDvel/rime-ice/commit/3ec476e9ca7f236d405481b6db6bb613754bc72d"
     },
     "app-misc/bilihud": {
       "version": "20260614.154330",
@@ -30,9 +30,9 @@
       "url": "https://github.com/MaaAssistantArknights/maa-cli/releases/tag/v0.7.5"
     },
     "net-misc/tsshd": {
-      "version": "20260607.040029",
-      "revision": "0bd47e6b6bc7ddc608a27842a2081224afb0c66c",
-      "url": "https://github.com/trzsz/tsshd/commit/0bd47e6b6bc7ddc608a27842a2081224afb0c66c"
+      "version": "20260620.235652",
+      "revision": "7713cd6be7b15ef781cd57aa215933c914e2f01d",
+      "url": "https://github.com/trzsz/tsshd/commit/7713cd6be7b15ef781cd57aa215933c914e2f01d"
     }
   }
 }
