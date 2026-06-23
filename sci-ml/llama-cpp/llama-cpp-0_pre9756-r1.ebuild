@@ -254,6 +254,9 @@ src_configure() {
 	fi
 
 	mycmakeargs+=(
+		-DCMAKE_BUILD_TYPE=Release
+		-DCMAKE_C_FLAGS_RELEASE="${CFLAGS} -DNDEBUG"
+		-DCMAKE_CXX_FLAGS_RELEASE="${CXXFLAGS} -DNDEBUG"
 		-DGGML_BACKEND_DL=OFF
 		-DGGML_CCACHE=OFF
 		-DGGML_CPU_REPACK="$(usex cpu-repack)"
