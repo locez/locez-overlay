@@ -1,0 +1,49 @@
+Local performance notes
+=======================
+
+This ebuild accepts a package variable for CUDA native builds:
+
+  LLAMA_CPP_CUDA_ARCHITECTURES
+
+Supported forms:
+
+  auto          Query nvidia-smi during emerge and use all visible GPUs.
+  12.0          Compute capability, from nvidia-smi. Converted to 120a-real.
+  8.9           Converted to 89-real.
+  120a-real     Passed to CMake directly.
+  8.9;12.0      Multiple GPUs, converted to 89-real;120a-real.
+
+For RTX 5070 Ti:
+
+  LLAMA_CPP_CUDA_ARCHITECTURES="12.0"
+
+Example /etc/portage/package.env:
+
+  sci-ml/llama-cpp llama-cpp-perf
+
+Example /etc/portage/env/llama-cpp-perf:
+
+  LLAMA_CPP_CUDA_ARCHITECTURES="12.0"
+
+You can also try:
+
+  LLAMA_CPP_CUDA_ARCHITECTURES="auto"
+
+When USE="native cuda", this variable must be set. Use explicit compute
+capability if Portage builds in a chroot/container or otherwise cannot see the
+NVIDIA GPU.
+
+If auto detection fails, the ebuild prints:
+
+  nvidia-smi -L
+  nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits
+
+Set an explicit value such as 12.0 to skip auto detection. This is the
+recommended path for reliable local performance builds.
+
+During configure, check the log for:
+
+  Using CMAKE_CUDA_ARCHITECTURES=120a-real
+
+If the log still says CMAKE_CUDA_ARCHITECTURES=native, this local ebuild or
+the package environment did not take effect.
