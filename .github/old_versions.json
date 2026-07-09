@@ -23,5 +23,11 @@
       "version": "0.1.8",
       "gitref": "refs/tags/v0.1.8",
       "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.8"
+    },
+    "sys-kernel/xanmod-sources": {
+      "version": "7.0.14",
+      "gitref": "refs/tags/7.0.14-xanmod1",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.0.14-xanmod1"
+    }
   }
 }
