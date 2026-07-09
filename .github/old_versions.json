@@ -24,6 +24,11 @@
       "gitref": "refs/tags/v0.1.8",
       "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.8"
     },
+    "sys-kernel/cachyos-sources": {
+      "version": "7.0.12-2",
+      "gitref": "refs/tags/cachyos-7.0.12-2",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.0.12-2"
+    },
     "sys-kernel/xanmod-sources": {
       "version": "7.0.14",
       "gitref": "refs/tags/7.0.14-xanmod1",
