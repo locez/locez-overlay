@@ -1,0 +1,15 @@
+diff --git a/mm/Kconfig b/mm/Kconfig
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -720,9 +720,8 @@ config KSM
+ config DEFAULT_MMAP_MIN_ADDR
+ 	int "Low address space to protect from user allocation"
+ 	depends on MMU
+-	default 65536 if ( X86_64 || X86_32 || PPC64 || IA64 ) && GENTOO_KERNEL_SELF_PROTECTION
+-	default 32768 if ( ARM64 || ARM ) && GENTOO_KERNEL_SELF_PROTECTION
+-	default 4096
++	default 32768 if ARM || (ARM64 && COMPAT)
++	default 65536
+ 	help
+ 	  This is the portion of low virtual memory which should be protected
+ 	  from userspace allocation.  Keeping a user from writing to low pages

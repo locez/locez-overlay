@@ -1,0 +1,31 @@
+Maintenance policy
+==================
+
+This package provides CachyOS patched kernel sources for Gentoo systems. It is
+maintained as a gaming-oriented and ZFS-aware third-party kernel option.
+
+The ebuilds use official CachyOS Linux release tarballs as the base source,
+apply Gentoo genpatches, then apply non-conflicting CachyOS kernel-patches. The
+vanilla Linux update patches from genpatches are intentionally skipped because
+the CachyOS release tarballs already track a concrete Linux point release.
+
+The default patch set targets a full gaming-oriented source tree. BORE is the
+default scheduler patch. prjc, prjc-lfbmq, hardened, and rt are kept as USE
+flags because they select a different scheduler or a distinct kernel variant
+patch. prjc-lfbmq follows CachyOS' sched-dev patch and should be treated as
+more experimental than BORE. Hardware/build compatibility patches that are gated
+by .config are applied by default.
+
+The thin USE flag is intentionally narrow. It installs a
+kernel/configs/cachyos-thin.config fragment and depends on clang/lld, but it
+does not overwrite the user's kernel .config during emerge. To enable ThinLTO,
+merge the fragment from the installed source tree and build with LLVM:
+
+  cd /usr/src/linux-<version>
+  make LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld cachyos-thin.config olddefconfig
+  make LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld
+
+The zfs USE flag is a dependency-resolution gate. When enabled, it requires a
+sys-fs/zfs-kmod or sys-fs/zfs[modules] version that declares support for the
+selected Linux series. This is intended to make unsupported ZFS/kernel
+combinations fail during dependency resolution instead of during module builds.
