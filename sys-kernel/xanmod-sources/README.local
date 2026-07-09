@@ -1,0 +1,37 @@
+Maintenance policy
+==================
+
+This package is maintained as a ZFS-friendly XanMod kernel sources package,
+not as an automatic mirror of every latest XanMod release.
+
+For ZFS users, the maintainer intends to keep at least one installable
+xanmod-sources ebuild that is compatible with the Linux version supported by
+the stable sys-fs/zfs or sys-fs/zfs-kmod packages in the Gentoo main tree.
+Newer XanMod series may also be packaged, but they are only considered
+ZFS-friendly when the corresponding ZFS module package declares support for
+that Linux series.
+
+The zfs USE flag is a compatibility gate. When enabled, it adds dependencies
+on ZFS module packages that are known to support the kernel series used by the
+selected ebuild. This is meant to make Portage report an unsupported ZFS/kernel
+combination during dependency resolution instead of letting users discover the
+problem later while building the ZFS module.
+
+Old ebuilds are dropped cautiously. Third-party kernels are often used on
+systems where ZFS module availability matters, and removing the last ebuild
+compatible with a stable ZFS module can force users into unwanted keyword
+changes or kernel downgrades.
+
+Users should accept keywords with an explicit kernel-series bound instead of
+unconditionally accepting every future version of this package. Patchlevel
+updates within the same Linux series are normally expected to be safe, while
+major or minor series jumps should be reviewed against ZFS module support
+first. For example, to use the 6.19 line:
+
+  <sys-kernel/xanmod-sources-6.20 ~amd64
+
+When deliberately moving to a newer kernel line, update the bound only after
+confirming that the matching sys-fs/zfs or sys-fs/zfs-kmod version supports
+that Linux series. For example:
+
+  <sys-kernel/xanmod-sources-7.1 ~amd64

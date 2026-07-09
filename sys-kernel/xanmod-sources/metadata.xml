@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>locez@locez.com</email>
+		<name>Locez</name>
+	</maintainer>
+	<use>
+		<flag name="zfs">Require a ZFS kernel module package known to support this Linux series</flag>
+	</use>
+	<upstream>
+		<remote-id type="gitlab">xanmod/linux</remote-id>
+		<remote-id type="sourceforge">xanmod</remote-id>
+	</upstream>
+</pkgmetadata>
