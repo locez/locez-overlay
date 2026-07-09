@@ -13,6 +13,7 @@ detect_version
 detect_arch
 
 XANMOD_VERSION="1"
+EXTRAVERSION="-xanmod${XANMOD_VERSION}"
 ZFS_KERNEL_MAX="7.0"
 
 DESCRIPTION="Linux kernel sources with XanMod and Gentoo patches"
@@ -41,7 +42,7 @@ RDEPEND="
 	)
 "
 
-KV_FULL="${PV}-xanmod${XANMOD_VERSION}"
+KV_FULL="${PV}${EXTRAVERSION}"
 KV="${KV_FULL}"
 
 pkg_pretend() {
@@ -97,6 +98,9 @@ src_prepare() {
 	eapply "${WORKDIR}"/*.patch
 
 	rm "${S}/tools/testing/selftests/tc-testing/action-ebpf" || die
+	sed -i -e "s:^\(EXTRAVERSION =\).*:\1 ${EXTRAVERSION}:" \
+		"${S}/Makefile" || die
+	rm -f "${S}/localversion" || die
 	default
 }
 
