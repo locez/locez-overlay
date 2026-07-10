@@ -2,14 +2,14 @@
   "version": 2,
   "data": {
     "app-i18n/rime-ice": {
-      "version": "20260620.083210",
-      "revision": "3ec476e9ca7f236d405481b6db6bb613754bc72d",
-      "url": "https://github.com/iDvel/rime-ice/commit/3ec476e9ca7f236d405481b6db6bb613754bc72d"
+      "version": "20260708.151829",
+      "revision": "3a543652a42c21904c62bd881d65e987600f0722",
+      "url": "https://github.com/iDvel/rime-ice/commit/3a543652a42c21904c62bd881d65e987600f0722"
     },
     "app-misc/bilihud": {
-      "version": "20260614.154330",
-      "revision": "0f9c937acfaee51b54e89a6b084613435cdfa5c4",
-      "url": "https://github.com/locez/bilihud/commit/0f9c937acfaee51b54e89a6b084613435cdfa5c4"
+      "version": "20260706.132511",
+      "revision": "f13201dee0ec1dbdef7d42cc9a4a69e80e176ae9",
+      "url": "https://github.com/locez/bilihud/commit/f13201dee0ec1dbdef7d42cc9a4a69e80e176ae9"
     },
     "dev-python/browser-cookie3": {
       "version": "0.20.1",
@@ -25,14 +25,15 @@
       "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.8"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.0.12-2",
-      "gitref": "refs/tags/cachyos-7.0.12-2",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.0.12-2"
+      "version": "7.1.3-1",
+      "gitref": "refs/tags/cachyos-7.1.3-1",
+      "revision": "c65b2bf6c329824c4438486978c8d582d8dac77d",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.3-1"
     },
     "sys-kernel/xanmod-sources": {
-      "version": "7.0.14",
-      "gitref": "refs/tags/7.0.14-xanmod1",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.0.14-xanmod1"
+      "version": "7.1.3",
+      "revision": "ece066880fc5122b2055b4a3c7538430dde330f0",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.3-xanmod1"
     }
   }
 }
