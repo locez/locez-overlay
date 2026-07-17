@@ -32,6 +32,7 @@
     },
     "sys-kernel/xanmod-sources": {
       "version": "7.1.3",
+      "gitref": "refs/tags/7.1.3-xanmod1",
       "revision": "ece066880fc5122b2055b4a3c7538430dde330f0",
       "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.3-xanmod1"
     }
