@@ -25,10 +25,10 @@
       "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.9"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.1.4-1",
-      "gitref": "refs/tags/cachyos-7.1.4-1",
-      "revision": "b6c783a8449f556045f9dbf5fccebd1d9adaee68",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.4-1"
+      "version": "7.1.4-2",
+      "gitref": "refs/tags/cachyos-7.1.4-2",
+      "revision": "42ede35c2aae383c2448580f3dbb749842269860",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.4-2"
     },
     "sys-kernel/xanmod-sources": {
       "version": "7.1.4",
