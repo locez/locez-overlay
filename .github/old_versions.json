@@ -25,16 +25,16 @@
       "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.9"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.1.4-2",
-      "gitref": "refs/tags/cachyos-7.1.4-2",
-      "revision": "42ede35c2aae383c2448580f3dbb749842269860",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.4-2"
+      "version": "7.1.5-1",
+      "gitref": "refs/tags/cachyos-7.1.5-1",
+      "revision": "f9cfd4c7fb600f54a5b27ac6aa6b9a869c8e5feb",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.5-1"
     },
     "sys-kernel/xanmod-sources": {
-      "version": "7.1.4",
-      "gitref": "refs/tags/7.1.4-xanmod1",
-      "revision": "967cc061f0dc65fb739f5929670e17c4dfeeaba6",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.4-xanmod1"
+      "version": "7.1.5",
+      "gitref": "refs/tags/7.1.5-xanmod1",
+      "revision": "2fb7a627a9c631c12a729594271c075bef6cda21",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.5-xanmod1"
     }
   }
 }
