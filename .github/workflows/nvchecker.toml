@@ -3,13 +3,14 @@
 oldver = "../old_versions.json"
 newver = "../new_versions.json"
 
-["app-i18n/rime-ice"]
-source = "github"
-github = "iDvel/rime-ice"
-
-["app-misc/bilihud"]
-source = "github"
-github = "locez/bilihud"
+["app-emulation/dwproton-bin"]
+source = "gitea"
+gitea = "dawn-winery/dwproton"
+host = "dawn.wine"
+use_latest_release = true
+prefix = "dwproton-"
+from_pattern = "-([0-9]+)$"
+to_pattern = "_p\\1"
 
 ["dev-python/browser-cookie3"]
 source = "pypi"
@@ -18,12 +19,6 @@ pypi = "browser-cookie3"
 ["dev-python/pure-protobuf"]
 source = "pypi"
 pypi = "pure-protobuf"
-
-["net-misc/tsshd"]
-source = "github"
-github = "trzsz/tsshd"
-use_latest_release = true
-prefix = "v"
 
 ["sys-kernel/cachyos-sources"]
 source = "github"

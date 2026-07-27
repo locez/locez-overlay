@@ -1,16 +1,6 @@
 {
   "version": 2,
   "data": {
-    "app-i18n/rime-ice": {
-      "version": "20260719.170205",
-      "revision": "b681a34f788795034b3b288830f4861980bc8b0d",
-      "url": "https://github.com/iDvel/rime-ice/commit/b681a34f788795034b3b288830f4861980bc8b0d"
-    },
-    "app-misc/bilihud": {
-      "version": "20260719.043923",
-      "revision": "a8cca21e48eb7b28dffa0caa8b4c8373de7d7833",
-      "url": "https://github.com/locez/bilihud/commit/a8cca21e48eb7b28dffa0caa8b4c8373de7d7833"
-    },
     "dev-python/browser-cookie3": {
       "version": "0.20.1",
       "url": "https://pypi.org/project/browser-cookie3/0.20.1/"
@@ -18,11 +8,6 @@
     "dev-python/pure-protobuf": {
       "version": "3.1.5",
       "url": "https://pypi.org/project/pure-protobuf/3.1.5/"
-    },
-    "net-misc/tsshd": {
-      "version": "0.1.9",
-      "gitref": "refs/tags/v0.1.9",
-      "url": "https://github.com/trzsz/tsshd/releases/tag/v0.1.9"
     },
     "sys-kernel/cachyos-sources": {
       "version": "7.1.5-1",
