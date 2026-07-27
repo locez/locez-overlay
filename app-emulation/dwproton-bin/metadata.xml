@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>locez@locez.com</email>
+		<name>Locez</name>
+	</maintainer>
+	<upstream>
+		<bugs-to>https://dawn.wine/dawn-winery/dwproton/issues</bugs-to>
+		<changelog>https://dawn.wine/dawn-winery/dwproton/releases</changelog>
+	</upstream>
+</pkgmetadata>
