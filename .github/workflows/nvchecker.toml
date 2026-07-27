@@ -12,14 +12,6 @@ prefix = "dwproton-"
 from_pattern = "-([0-9]+)$"
 to_pattern = "_p\\1"
 
-["dev-python/browser-cookie3"]
-source = "pypi"
-pypi = "browser-cookie3"
-
-["dev-python/pure-protobuf"]
-source = "pypi"
-pypi = "pure-protobuf"
-
 ["sys-kernel/cachyos-sources"]
 source = "github"
 github = "CachyOS/linux"

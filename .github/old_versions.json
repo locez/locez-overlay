@@ -1,13 +1,11 @@
 {
   "version": 2,
   "data": {
-    "dev-python/browser-cookie3": {
-      "version": "0.20.1",
-      "url": "https://pypi.org/project/browser-cookie3/0.20.1/"
-    },
-    "dev-python/pure-protobuf": {
-      "version": "3.1.5",
-      "url": "https://pypi.org/project/pure-protobuf/3.1.5/"
+    "app-emulation/dwproton-bin": {
+      "version": "11.0_p9",
+      "gitref": "refs/tags/dwproton-11.0-9",
+      "revision": "f66db82ed0d3e7a749a50592139fe4f1d1821064",
+      "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-9"
     },
     "sys-kernel/cachyos-sources": {
       "version": "7.1.5-1",
