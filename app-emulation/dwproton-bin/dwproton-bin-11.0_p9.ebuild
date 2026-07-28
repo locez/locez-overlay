@@ -55,14 +55,8 @@ src_install() {
 		compatibilitytool.vdf || die
 
 	dodir "${OPT_DIR}"
-	dodir "${COMPAT_DIR}"
+	dodir "${COMPAT_DIR%/*}"
 	cp -a ./. "${ED}${OPT_DIR}/" || die
-	insinto "${COMPAT_DIR}"
-	doins compatibilitytool.vdf
-	local item
-	for item in *; do
-		[[ ${item} == compatibilitytool.vdf ]] && continue
-		dosym -r "${OPT_DIR}/${item}" "${COMPAT_DIR}/${item}" || die
-	done
-	fperms 0644 "${COMPAT_DIR}/compatibilitytool.vdf"
+	# Keep the tool root symlinked so Lutris and UMU resolve it to /opt.
+	dosym -r "${OPT_DIR}" "${COMPAT_DIR}" || die
 }
