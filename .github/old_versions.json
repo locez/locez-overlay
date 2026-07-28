@@ -4,7 +4,6 @@
     "app-emulation/dwproton-bin": {
       "version": "11.0_p9",
       "gitref": "refs/tags/dwproton-11.0-9",
-      "revision": "f66db82ed0d3e7a749a50592139fe4f1d1821064",
       "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-9"
     },
     "sys-kernel/cachyos-sources": {
