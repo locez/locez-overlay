@@ -13,7 +13,7 @@ SRC_URI="https://dawn.wine/dawn-winery/dwproton/releases/download/dwproton-${MY_
 
 S="${WORKDIR}/dwproton-${MY_PV}-x86_64"
 
-LICENSE="DWProton OFL-1.1 AOM-Patent-1.0"
+LICENSE="Proton OFL-1.1 AOM-Patent-1.0"
 SLOT="${PV}"
 KEYWORDS="-* ~amd64"
 
