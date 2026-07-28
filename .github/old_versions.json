@@ -6,6 +6,11 @@
       "gitref": "refs/tags/dwproton-11.0-9",
       "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-9"
     },
+    "app-emulation/proton-ge-bin": {
+      "version": "11.3",
+      "gitref": "refs/tags/GE-Proton11-3",
+      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-3"
+    },
     "sys-kernel/cachyos-sources": {
       "version": "7.1.5-1",
       "gitref": "refs/tags/cachyos-7.1.5-1",

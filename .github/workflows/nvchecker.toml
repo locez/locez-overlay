@@ -12,6 +12,14 @@ prefix = "dwproton-"
 from_pattern = "-([0-9]+)$"
 to_pattern = "_p\\1"
 
+["app-emulation/proton-ge-bin"]
+source = "github"
+github = "GloriousEggroll/proton-ge-custom"
+use_latest_release = true
+prefix = "GE-Proton"
+from_pattern = "^([0-9]+)-([0-9]+)$"
+to_pattern = "\\1.\\2"
+
 ["sys-kernel/cachyos-sources"]
 source = "github"
 github = "CachyOS/linux"
