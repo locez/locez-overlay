@@ -12,16 +12,16 @@
       "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-3"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.1.5-1",
-      "gitref": "refs/tags/cachyos-7.1.5-1",
-      "revision": "f9cfd4c7fb600f54a5b27ac6aa6b9a869c8e5feb",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.5-1"
+      "version": "7.1.6-1",
+      "gitref": "refs/tags/cachyos-7.1.6-1",
+      "revision": "0536edf81834f0f5274f44a6c959c07e8ed3f11b",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.1.6-1"
     },
     "sys-kernel/xanmod-sources": {
-      "version": "7.1.5",
-      "gitref": "refs/tags/7.1.5-xanmod1",
-      "revision": "2fb7a627a9c631c12a729594271c075bef6cda21",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.5-xanmod1"
+      "version": "7.1.6",
+      "gitref": "refs/tags/7.1.6-xanmod1",
+      "revision": "6db734bb161f1d7a05abbfb1c4c7f8c3279316ec",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.6-xanmod1"
     }
   }
 }
