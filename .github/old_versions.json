@@ -9,7 +9,8 @@
     "app-emulation/proton-ge-bin": {
       "version": "11.5",
       "gitref": "refs/tags/GE-Proton11-5",
-      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-5"
+      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-5",
+      "creation_time": "2026-08-11T08:55:03Z"
     },
     "sys-kernel/cachyos-sources": {
       "version": "7.1.8-1",
@@ -21,7 +22,8 @@
       "version": "7.1.8",
       "gitref": "refs/tags/7.1.8-xanmod1",
       "revision": "a8992243188e9cb0965375fdfddd4869c048cf41",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.8-xanmod1"
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.1.8-xanmod1",
+      "revision_creation_time": "2026-08-10T00:19:24.000+00:00"
     }
   }
 }
