@@ -291,7 +291,7 @@ declare -A GIT_CRATES=(
 	[smithay]='https://github.com/Smithay/smithay;812bd33259ff58810dadef6086d8385eeac1ca55;smithay-%commit%'
 )
 
-inherit cargo desktop systemd unpacker xdg
+inherit cargo systemd unpacker xdg
 
 DESCRIPTION="Flutter-native Wayland compositor and desktop shell"
 HOMEPAGE="https://github.com/denialwm/denial"
@@ -382,7 +382,8 @@ src_install() {
 	insinto /usr/lib/denial/flutter/data
 	doins -r "${DENIAL_AOT_ROOT}/lib/denial/flutter/data/flutter_assets"
 
-	domenu "${DENIAL_ROOT}/packaging/arch/denial.desktop"
+	insinto /usr/share/wayland-sessions
+	doins "${DENIAL_ROOT}/packaging/arch/denial.desktop"
 	insinto /usr/share/xdg-desktop-portal
 	doins "${DENIAL_ROOT}/packaging/arch/denial-portals.conf"
 	insinto /etc/xdg/xdg-desktop-portal-wlr
