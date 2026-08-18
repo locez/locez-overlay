@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>locez@disroot.org</email>
+		<name>Locez</name>
+	</maintainer>
+	<longdescription>
+		The pinned Flutter Engine runtime used by the Denial Wayland compositor.
+		This package is intentionally binary-only because the matching Flutter
+		fork and custom engine are not part of the normal Gentoo toolchain.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">denialwm/denial</remote-id>
+	</upstream>
+</pkgmetadata>

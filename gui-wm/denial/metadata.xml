@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>locez@disroot.org</email>
+		<name>Locez</name>
+	</maintainer>
+	<longdescription>
+		Denial is a Wayland compositor whose native compositor/control path is
+		built from Rust and Smithay, while its desktop shell is a Flutter AOT
+		bundle loaded by the compositor.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">denialwm/denial</remote-id>
+	</upstream>
+</pkgmetadata>
