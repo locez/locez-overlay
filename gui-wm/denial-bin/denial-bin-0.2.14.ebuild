@@ -19,7 +19,6 @@ RDEPEND="
 	!gui-wm/denial
 	dev-libs/libinput:=
 	dev-libs/wayland
-	media-fonts/source-han-sans
 	media-libs/libglvnd
 	media-libs/mesa
 	sys-auth/seatd:=
