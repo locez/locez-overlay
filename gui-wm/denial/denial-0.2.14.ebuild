@@ -325,6 +325,7 @@ DEPEND="${COMMON_DEPEND}
 "
 BDEPEND="app-arch/zstd"
 RDEPEND="
+	!gui-wm/denial-bin
 	${COMMON_DEPEND}
 	~dev-libs/denial-flutter-engine-bin-${PV}
 	app-misc/ddcutil
