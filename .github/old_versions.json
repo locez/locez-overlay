@@ -2,9 +2,9 @@
   "version": 2,
   "data": {
     "app-emulation/dwproton-bin": {
-      "version": "11.0_p11",
-      "gitref": "refs/tags/dwproton-11.0-11",
-      "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-11"
+      "version": "11.0_p12",
+      "gitref": "refs/tags/dwproton-11.0-12",
+      "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-12"
     },
     "app-emulation/proton-ge-bin": {
       "version": "11.5",
