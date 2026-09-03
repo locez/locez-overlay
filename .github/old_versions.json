@@ -19,11 +19,11 @@
       "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.2-1"
     },
     "sys-kernel/xanmod-sources": {
-      "version": "7.2.1",
-      "gitref": "refs/tags/7.2.1-xanmod1",
-      "revision": "87d7e154ade44afd1d4e6d782687f6177b393008",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.2.1-xanmod1",
-      "revision_creation_time": "2026-08-27T15:51:26.000+00:00"
+      "version": "7.2.3",
+      "gitref": "refs/tags/7.2.3-xanmod1",
+      "revision": "3b1e0e296cd6099bdeec12a9ec18fc5415d2d0f7",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.2.3-xanmod1",
+      "revision_creation_time": "2026-09-02T15:14:12.000+00:00"
     }
   }
 }
