@@ -13,10 +13,10 @@
       "creation_time": "2026-09-16T02:28:16Z"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.2.5-1",
-      "gitref": "refs/tags/cachyos-7.2.5-1",
-      "revision": "96237e0dab715f8c9c1a7504b88be524eb5e414e",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.5-1"
+      "version": "7.2.6-1",
+      "gitref": "refs/tags/cachyos-7.2.6-1",
+      "revision": "ad989a1d77e9ffdf2c1a92f67b75707bae0dda74",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.6-1"
     },
     "sys-kernel/xanmod-sources": {
       "version": "7.2.6",
