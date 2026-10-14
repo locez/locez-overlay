@@ -7,16 +7,16 @@
       "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-14"
     },
     "app-emulation/proton-ge-bin": {
-      "version": "11.7",
-      "gitref": "refs/tags/GE-Proton11-7",
-      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-7",
-      "creation_time": "2026-09-16T02:28:16Z"
+      "version": "11.9",
+      "gitref": "refs/tags/GE-Proton11-9",
+      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-9",
+      "creation_time": "2026-10-14T00:14:59Z"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.2.9-2",
-      "gitref": "refs/tags/cachyos-7.2.9-2",
-      "revision": "42d5ddb7d22a5f6d72a9191d25efbd178b0a3066",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.9-2"
+      "version": "7.2.10-1",
+      "gitref": "refs/tags/cachyos-7.2.10-1",
+      "revision": "2cae92a287418182fa30e5f753d819a5ec9659fa",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.10-1"
     },
     "sys-kernel/xanmod-sources": {
       "version": "7.2.10",
