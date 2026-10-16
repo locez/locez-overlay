@@ -13,17 +13,17 @@
       "creation_time": "2026-10-14T00:14:59Z"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.2.10-1",
-      "gitref": "refs/tags/cachyos-7.2.10-1",
-      "revision": "2cae92a287418182fa30e5f753d819a5ec9659fa",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.10-1"
+      "version": "7.2.11-1",
+      "gitref": "refs/tags/cachyos-7.2.11-1",
+      "revision": "e561a0934fa339d071093630f77ee5ed050250a4",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.2.11-1"
     },
     "sys-kernel/xanmod-sources": {
-      "version": "7.2.10",
-      "gitref": "refs/tags/7.2.10-xanmod1",
-      "revision": "455a2bf911e21ac20565b58c11f1f2fb6544f805",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.2.10-xanmod1",
-      "revision_creation_time": "2026-10-11T16:18:25.000+00:00"
+      "version": "7.2.11",
+      "gitref": "refs/tags/7.2.11-xanmod1",
+      "revision": "78ec63a677fc10e0b5099d4a162c62df113f4aec",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.2.11-xanmod1",
+      "revision_creation_time": "2026-10-15T18:57:05.000+00:00"
     }
   }
 }
