@@ -2,15 +2,15 @@
   "version": 2,
   "data": {
     "app-emulation/dwproton-bin": {
-      "version": "11.0_p14",
-      "gitref": "refs/tags/dwproton-11.0-14",
-      "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-14"
+      "version": "11.0_p15",
+      "gitref": "refs/tags/dwproton-11.0-15",
+      "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-15"
     },
     "app-emulation/proton-ge-bin": {
-      "version": "11.9",
-      "gitref": "refs/tags/GE-Proton11-9",
-      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-9",
-      "creation_time": "2026-10-14T00:14:59Z"
+      "version": "11.10",
+      "gitref": "refs/tags/GE-Proton11-10",
+      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-10",
+      "creation_time": "2026-10-19T06:21:57Z"
     },
     "sys-kernel/cachyos-sources": {
       "version": "7.2.11-1",
