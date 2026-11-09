@@ -26,12 +26,25 @@ Users should accept keywords with an explicit kernel-series bound instead of
 unconditionally accepting every future version of this package. Patchlevel
 updates within the same Linux series are normally expected to be safe, while
 major or minor series jumps should be reviewed against ZFS module support
-first. For example, to use the 6.19 line:
+first. For example, to use the 7.2 line:
 
-  <sys-kernel/xanmod-sources-6.20 ~amd64
+  <sys-kernel/xanmod-sources-7.3 ~amd64
 
 When deliberately moving to a newer kernel line, update the bound only after
 confirming that the matching sys-fs/zfs or sys-fs/zfs-kmod version supports
 that Linux series. For example:
 
-  <sys-kernel/xanmod-sources-7.1 ~amd64
+  <sys-kernel/xanmod-sources-7.4 ~amd64
+
+Linux 7.3 compatibility
+======================
+
+As of 2026-11-09, stable OpenZFS 2.4.4 and zfs-kmod 2.3.9 declare support
+through Linux 7.2 only. The 7.3.3 ebuild therefore requires USE=-zfs, and
+Portage rejects USE=zfs during dependency resolution. The 7.2.5 ebuild remains
+available as the ZFS-compatible fallback. Disabling this flag only bypasses the
+package's compatibility gate; it does not make an unsupported ZFS module
+compatible.
+
+Before enabling USE=zfs for Linux 7.3, replace this restriction with module
+dependencies on a released version that declares support for Linux 7.3.
