@@ -7,10 +7,10 @@
       "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-17"
     },
     "app-emulation/proton-ge-bin": {
-      "version": "11.12",
-      "gitref": "refs/tags/GE-Proton11-12",
-      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-12",
-      "creation_time": "2026-11-03T07:19:38Z"
+      "version": "11.13",
+      "gitref": "refs/tags/GE-Proton11-13",
+      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-13",
+      "creation_time": "2026-11-23T03:10:43Z"
     },
     "sys-kernel/cachyos-sources": {
       "version": "7.3.5-2",
