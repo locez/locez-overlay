@@ -7,23 +7,23 @@
       "url": "https://dawn.wine/dawn-winery/dwproton/releases/tag/dwproton-11.0-17"
     },
     "app-emulation/proton-ge-bin": {
-      "version": "11.13",
-      "gitref": "refs/tags/GE-Proton11-13",
-      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-13",
-      "creation_time": "2026-11-23T03:10:43Z"
+      "version": "11.14",
+      "gitref": "refs/tags/GE-Proton11-14",
+      "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/tag/GE-Proton11-14",
+      "creation_time": "2026-11-23T10:19:36Z"
     },
     "sys-kernel/cachyos-sources": {
-      "version": "7.3.5-2",
-      "gitref": "refs/tags/cachyos-7.3.5-2",
-      "revision": "b1eff1002eb0e44f24294aabcab623fc95293413",
-      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.3.5-2"
+      "version": "7.3.6-1",
+      "gitref": "refs/tags/cachyos-7.3.6-1",
+      "revision": "07f9c41a63b3d830c40371a7f01c49d1fb366114",
+      "url": "https://github.com/CachyOS/linux/releases/tag/cachyos-7.3.6-1"
     },
     "sys-kernel/xanmod-sources": {
-      "version": "7.3.5",
-      "gitref": "refs/tags/7.3.5-xanmod1",
-      "revision": "5c52e36d59ac555e8068d171939759bc00da712f",
-      "url": "https://gitlab.com/xanmod/linux/-/tags/7.3.5-xanmod1",
-      "revision_creation_time": "2026-11-17T15:44:16.000+00:00"
+      "version": "7.3.6",
+      "gitref": "refs/tags/7.3.6-xanmod1",
+      "revision": "6b041b157230995240a7b854a48b049042ac5673",
+      "url": "https://gitlab.com/xanmod/linux/-/tags/7.3.6-xanmod1",
+      "revision_creation_time": "2026-11-23T19:29:22.000+00:00"
     }
   }
 }
