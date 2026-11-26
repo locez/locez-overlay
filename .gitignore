@@ -3,3 +3,5 @@
 metadata/md5-cache/
 distfiles/
 files/digest-*
+__pycache__/
+*.py[cod]

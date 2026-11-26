@@ -1,7 +1,6 @@
 [__config__]
-# Version records file to be committed by GitHub Actions
-oldver = "../old_versions.json"
-newver = "../new_versions.json"
+oldver = "/tmp/nvchecker-old.json"
+newver = "/tmp/nvchecker-new.json"
 
 ["app-emulation/dwproton-bin"]
 source = "gitea"
@@ -45,6 +44,18 @@ source = "github"
 github = "locez/kotonoha"
 use_max_tag = true
 prefix = "v"
+
+["media-sound/cider"]
+source = "regex"
+url = "https://repo.cider.sh/apt/pool/main/"
+regex = 'cider-v([0-9]+(?:\.[0-9]+)+)-linux-x64\.deb'
+
+["net-im/tencent-qq"]
+source = "regex"
+url = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js"
+regex = 'QQ_([0-9]+(?:\.[0-9]+)+_[0-9]+)_amd64_01\.deb'
+from_pattern = "_([0-9]+)$"
+to_pattern = "_p\\1"
 
 ["net-misc/tsshd"]
 source = "github"
