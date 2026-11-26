@@ -140,8 +140,10 @@ jobs:
         with:
           args: --exit error ${{ matrix.pkg }}
 
-      - name: Create or update Pull Request
+      - name: Create and auto-merge Pull Request
+        id: pr
         if: steps.bump.outputs.status == 'bumped' && steps.pkgcheck.outcome == 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -168,24 +170,45 @@ jobs:
           PR_BODY="Automated bump for \`${PKG}\` (\`${LOCAL_VER}\` -> \`${NEW_VER}\`).
 
           - Manifest updated (BLAKE2B + SHA512)
+          - Package-specific checks passed
           - \`pkgcheck scan --exit error ${PKG}\` passed
           - Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body "$PR_BODY"
+          PR_NUM=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUM" ]; then
+            gh pr edit "$PR_NUM" --title "$PR_TITLE" --body "$PR_BODY"
           else
-            gh pr create --base master --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
+            PR_URL=$(gh pr create --base master --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY")
+            PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          fi
+
+          # Auto-merge with rebase retry in case another matrix job merged concurrently
+          MERGED=false
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge "$PR_NUM" --squash --delete-branch; then
+              MERGED=true
+              break
+            fi
+            echo "Merge attempt $attempt failed for PR #$PR_NUM, rebasing onto origin/master..."
+            sleep $(( attempt * 3 ))
+            git fetch origin master
+            git rebase origin/master
+            git push --force origin "$BRANCH"
+          done
+
+          if [ "$MERGED" != "true" ]; then
+            echo "Failed to auto-merge PR #$PR_NUM after 5 attempts" >&2
+            exit 1
           fi
 
           # Auto-close any previously opened failure issue for this package
           FAIL_ISSUE=$(gh issue list --state open --label "autobump-failed" --search "[autobump-failed] ${PKG} in:title" --json number --jq '.[0].number // empty')
           if [ -n "$FAIL_ISSUE" ]; then
-            gh issue close "$FAIL_ISSUE" --comment "Resolved by automated bump PR for \`${NEW_VER}\`."
+            gh issue close "$FAIL_ISSUE" --comment "Resolved and auto-merged via PR #${PR_NUM} (\`${NEW_VER}\`)."
           fi
 
       - name: Notify maintainer on failure
-        if: steps.bump.outputs.status == 'failed' || (steps.bump.outputs.status == 'bumped' && steps.pkgcheck.outcome != 'success')
+        if: steps.bump.outputs.status == 'failed' || (steps.bump.outputs.status == 'bumped' && (steps.pkgcheck.outcome != 'success' || steps.pr.outcome != 'success'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -196,8 +219,10 @@ jobs:
 
           if [ "${{ steps.bump.outputs.status }}" = "failed" ]; then
             REASON=$(jq -r '.message // "Unknown autobump error"' /tmp/bump-result.json)
-          else
+          elif [ "${{ steps.pkgcheck.outcome }}" != "success" ]; then
             REASON="pkgcheck scan --exit error failed for ${PKG} ${NEW_VER}. Check workflow logs."
+          else
+            REASON="Failed to create or auto-merge PR for ${PKG} ${NEW_VER}. Check workflow logs."
           fi
 
           gh label create "autobump-failed" --color "d93f0b" --description "Automated package bump failed" 2>/dev/null || true

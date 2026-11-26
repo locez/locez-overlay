@@ -574,8 +574,9 @@ def bump_tsshd(pkg: str, new_ver: str, work: Path, *, upload_vendor: bool) -> No
     go_m = re.search(r"^go\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)", go_mod, re.M)
     go_ver = go_m.group(1) if go_m else None
 
-    # Build vendor tarball
+    # Build vendor tarball and verify Go build compiles cleanly
     run(["go", "mod", "vendor"], cwd=src_root)
+    run(["go", "build", "-mod=vendor", "-buildvcs=false", "-o", os.devnull, "./cmd/tsshd"], cwd=src_root)
     vendor_tar = work / vendor_dist
     run(["tar", "-cJf", str(vendor_tar), "-C", str(unpack_dir), f"tsshd-{new_ver}/vendor"])
 
