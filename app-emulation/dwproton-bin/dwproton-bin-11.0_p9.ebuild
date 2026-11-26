@@ -16,14 +16,15 @@ S="${WORKDIR}/dwproton-${MY_PV}-x86_64"
 LICENSE="Proton OFL-1.1 AOM-Patent-1.0"
 SLOT="${PV}"
 KEYWORDS="-* ~amd64"
+IUSE="+abi_x86_32"
 
 BDEPEND="dev-util/patchelf"
 
 # The graphics implementations are supplied by the host; Proton itself runs
 # inside Steam Linux Runtime.
 RDEPEND="
-	virtual/opengl[abi_x86_32(-)]
-	media-libs/vulkan-loader[abi_x86_32(-)]
+	virtual/opengl[abi_x86_32(-)?]
+	media-libs/vulkan-loader[abi_x86_32(-)?]
 "
 
 RESTRICT="strip"
