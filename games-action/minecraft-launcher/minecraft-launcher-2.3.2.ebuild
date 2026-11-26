@@ -1,4 +1,4 @@
-# Copyright 2025 Gentoo Authors
+# Copyright 2025-2026 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=8
@@ -7,19 +7,18 @@ inherit desktop xdg-utils
 
 DESCRIPTION="Official Minecraft Launcher"
 HOMEPAGE="https://www.minecraft.net/"
-SRC_URI="https://launcher.mojang.com/download/Minecraft.tar.gz -> minecraft-launcher.tar.gz
-		https://launcher.mojang.com/download/minecraft-launcher.svg -> minecraft-launcher.svg
-		"
+SRC_URI="
+	https://launcher.mojang.com/download/Minecraft.tar.gz -> ${P}.tar.gz
+	https://launcher.mojang.com/download/minecraft-launcher.svg
+"
 S="${WORKDIR}/minecraft-launcher"
 
-LICENSE="Minecraft-EULA"
+LICENSE="Mojang"
 SLOT="0"
 KEYWORDS="~amd64"
-RESTRICT="strip mirror"
-
 IUSE="bwrap"
+RESTRICT="bindist mirror strip"
 
-DEPEND=""
 RDEPEND="
 	bwrap? ( sys-apps/bubblewrap )
 	x11-libs/gtk+:3
@@ -28,8 +27,8 @@ RDEPEND="
 	x11-libs/libX11
 	x11-libs/libXcursor
 	x11-libs/libXrandr
-	media-libs/fontconfig"
-BDEPEND=""
+	media-libs/fontconfig
+"
 
 QA_PREBUILT="*"
 
@@ -37,7 +36,7 @@ src_install() {
 	insinto /opt/minecraft-launcher
 	doins -r *
 	launcher=/opt/minecraft-launcher/minecraft-launcher
-	fperms +x ${launcher}
+	fperms +x "${launcher}"
 
 	if use bwrap; then
 		exeinto /opt/minecraft-launcher
@@ -49,8 +48,8 @@ src_install() {
 	make_desktop_entry \
 		"${launcher}" \
 		"Minecraft Launcher" \
-	"minecraft-launcher" \
-	"Game"
+		"minecraft-launcher" \
+		"Game"
 }
 
 pkg_postinst() {
