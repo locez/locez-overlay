@@ -39,8 +39,8 @@ that Linux series. For example:
 Linux 7.3 compatibility
 ======================
 
-As of 2026-11-09, stable OpenZFS 2.4.4 and zfs-kmod 2.3.9 declare support
-through Linux 7.2 only. The 7.3.3 ebuild therefore requires USE=-zfs, and
+As of 2026-11-27, stable OpenZFS 2.4.4 and zfs-kmod 2.3.9 declare support
+through Linux 7.2 only. The 7.3.6 ebuild therefore requires USE=-zfs, and
 Portage rejects USE=zfs during dependency resolution. The 7.2.5 ebuild remains
 available as the ZFS-compatible fallback. Disabling this flag only bypasses the
 package's compatibility gate; it does not make an unsupported ZFS module
