@@ -20,6 +20,38 @@ prefix = "GE-Proton"
 from_pattern = "^([0-9]+)-([0-9]+)$"
 to_pattern = "\\1.\\2"
 
+["dev-python/pure-protobuf"]
+source = "pypi"
+pypi = "pure-protobuf"
+
+["dev-python/qasync"]
+source = "pypi"
+pypi = "qasync"
+
+["media-libs/libdicom"]
+source = "github"
+github = "ImagingDataCommons/libdicom"
+use_latest_release = true
+prefix = "v"
+
+["media-libs/openslide"]
+source = "github"
+github = "openslide/openslide"
+use_latest_release = true
+prefix = "v"
+
+["media-plugins/kotonoha"]
+source = "github"
+github = "locez/kotonoha"
+use_max_tag = true
+prefix = "v"
+
+["net-misc/tsshd"]
+source = "github"
+github = "trzsz/tsshd"
+use_latest_release = true
+prefix = "v"
+
 ["sys-kernel/cachyos-sources"]
 source = "github"
 github = "CachyOS/linux"
@@ -35,3 +67,8 @@ use_max_tag = true
 include_regex = "[0-9]+\\.[0-9]+\\.[0-9]+-xanmod[0-9]+"
 from_pattern = "-xanmod[0-9]+$"
 to_pattern = ""
+
+["x11-misc/flatpak-xdg-utils"]
+source = "github"
+github = "flatpak/flatpak-xdg-utils"
+use_latest_release = true

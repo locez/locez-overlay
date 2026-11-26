@@ -1,0 +1,8 @@
+{
+  "baseVersion": "__BASE_VER__",
+  "curVersion": "__CURRENT_VER__",
+  "prevVersion": "",
+  "onErrorVersions": [],
+  "buildId": "__BUILD_VER__",
+  "unzipRetryCount": 0
+}

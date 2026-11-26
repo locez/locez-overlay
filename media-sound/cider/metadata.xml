@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>locez@locez.com</email>
+		<name>Locez</name>
+	</maintainer>
+	<longdescription lang="en">
+		Cider is a new cross-platform Apple Music experience built on Vue.js 
+		and Electron, written from the ground up with performance in mind. 🚀 
+		This package installs the proprietary version (Cider 4).
+	</longdescription>
+	<upstream>
+		<remote-id type="github">ciderapp/Cider</remote-id>
+		<bugs-to>https://github.com/ciderapp/Cider/issues</bugs-to>
+	</upstream>
+</pkgmetadata>
