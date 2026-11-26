@@ -245,6 +245,64 @@ def get_gentoo_genpatches_ver(kernel_ver: str) -> str | None:
     return m.group(1) if m else None
 
 
+def get_gentoo_stable_zfs_info() -> tuple[str, str]:
+    """Return (stable_zfs_ver, modules_kernel_max) from gentoo-mirror/gentoo sys-fs/zfs."""
+    items = gh_api_json("repos/gentoo-mirror/gentoo/contents/sys-fs/zfs")
+    candidates: list[tuple[str, str]] = []
+    for item in items:
+        name = item.get("name", "")
+        if not name.startswith("zfs-") or not name.endswith(".ebuild") or "9999" in name:
+            continue
+        ver = name[len("zfs-") : -len(".ebuild")]
+        candidates.append((ver, name))
+    candidates.sort(key=lambda x: version_key(x[0]), reverse=True)
+
+    for ver, fname in candidates:
+        text = http_get_text(
+            f"https://raw.githubusercontent.com/gentoo-mirror/gentoo/master/sys-fs/zfs/{fname}"
+        )
+        kw_m = re.search(r'^\s*KEYWORDS="([^"]+)"', text, re.M)
+        max_m = re.search(r'^MODULES_KERNEL_MAX=([0-9]+\.[0-9]+)', text, re.M)
+        if not kw_m or not max_m:
+            continue
+        # Stable amd64 keyword (amd64 without leading ~)
+        if re.search(r"(?<!~)\bamd64\b", kw_m.group(1)):
+            return (ver, max_m.group(1))
+    raise BumpError("Could not determine stable amd64 sys-fs/zfs MODULES_KERNEL_MAX from Gentoo tree")
+
+
+def ebuild_forbids_zfs(eb_text: str) -> bool:
+    m = re.search(r'REQUIRED_USE="([^"]*)"', eb_text, re.S)
+    return bool(m and re.search(r"(^|\s)!zfs(\s|$)", m.group(1)))
+
+
+def ebuild_supports_zfs(ver: str, eb_text: str, zfs_max_series: str) -> bool:
+    if ebuild_forbids_zfs(eb_text):
+        return False
+    series = ".".join(ver.split(".")[:2])
+    return version_key(series) <= version_key(zfs_max_series)
+
+
+def keep_old_kernel_for_zfs(
+    pkg: str,
+    old_eb: Path,
+    new_ver: str,
+    new_eb_text: str,
+    zfs_max_series: str,
+) -> bool:
+    """Return True if old_eb must be kept because dropping it would leave no ZFS-compatible kernel."""
+    if ebuild_supports_zfs(new_ver, new_eb_text, zfs_max_series):
+        return False
+    old_resolved = old_eb.resolve()
+    for ver, eb in list_release_ebuilds(pkg):
+        if eb.resolve() == old_resolved or ver == new_ver:
+            continue
+        if ebuild_supports_zfs(ver, eb.read_text(encoding="utf-8"), zfs_max_series):
+            return False
+    # No other ebuild (nor the new one) supports ZFS <= zfs_max_series: keep old_eb!
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Package-specific bump handlers
 # ---------------------------------------------------------------------------
@@ -631,23 +689,30 @@ def bump_tsshd(pkg: str, new_ver: str, work: Path, *, upload_vendor: bool) -> No
 def bump_xanmod(pkg: str, new_ver: str, work: Path) -> None:
     pdir = REPO_ROOT / pkg
     ebuilds = list_release_ebuilds(pkg)
-    old_ver, old_eb = ebuilds[-1]
+    new_series = ".".join(new_ver.split(".")[:2])
+    same_series = [(v, eb) for v, eb in ebuilds if ".".join(v.split(".")[:2]) == new_series]
+    if not same_series:
+        latest_ver = ebuilds[-1][0]
+        raise BumpError(
+            f"xanmod-sources minor series jump ({latest_ver} -> {new_ver}) requires manual review "
+            f"(ZFS compatibility gate and patch verification)."
+        )
+    old_ver, old_eb = same_series[-1]
     if old_ver == new_ver:
         raise BumpSkip(f"{pkg} already at {new_ver}")
 
-    old_series = ".".join(old_ver.split(".")[:2])
-    new_series = ".".join(new_ver.split(".")[:2])
-    if old_series != new_series:
-        raise BumpError(
-            f"xanmod-sources minor series jump ({old_ver} -> {new_ver}) requires manual review "
-            f"(ZFS compatibility gate and patch verification)."
-        )
+    zfs_ver, zfs_max = get_gentoo_stable_zfs_info()
 
     gp_ver = get_gentoo_genpatches_ver(new_ver)
     if not gp_ver:
         raise BumpSkip(f"gentoo-sources-{new_ver} (genpatches) not published in Gentoo tree yet")
 
     eb_text = old_eb.read_text(encoding="utf-8")
+    if version_key(new_series) > version_key(zfs_max) and not ebuild_forbids_zfs(eb_text):
+        raise BumpError(
+            f"xanmod-sources {new_ver} exceeds stable sys-fs/zfs-{zfs_ver} MODULES_KERNEL_MAX={zfs_max}, "
+            f"but template ebuild does not gate REQUIRED_USE=\"!zfs\"."
+        )
     xm_m = re.search(r'^XANMOD_VERSION="([^"]+)"', eb_text, re.M)
     xm_ver = xm_m.group(1) if xm_m else "1"
 
@@ -709,19 +774,20 @@ def bump_xanmod(pkg: str, new_ver: str, work: Path) -> None:
 
     shutil.rmtree(test_dir)
 
-    # Update ebuild, drop previous same-series ebuild, keep ZFS fallback series
+    # Write new ebuild; never drop old_eb if it is the last ZFS-compatible fallback
     new_eb_text = re.sub(r'^K_GENPATCHES_VER="[^"]+"', f'K_GENPATCHES_VER="{gp_ver}"', eb_text, count=1, flags=re.M)
     new_eb = pdir / f"xanmod-sources-{new_ver}.ebuild"
     new_eb.write_text(new_eb_text, encoding="utf-8")
 
     entries = parse_manifest(pdir / "Manifest")
-    old_gp_m = re.search(r'^K_GENPATCHES_VER="([^"]+)"', eb_text, re.M)
-    old_gp = old_gp_m.group(1) if old_gp_m else None
-    old_eb.unlink()
-    entries.pop(f"patch-{old_ver}-xanmod{xm_ver}.xz", None)
-    if old_gp and old_gp != gp_ver:
-        entries.pop(f"genpatches-{old_series}-{old_gp}.base.tar.xz", None)
-        entries.pop(f"genpatches-{old_series}-{old_gp}.extras.tar.xz", None)
+    if not keep_old_kernel_for_zfs(pkg, old_eb, new_ver, new_eb_text, zfs_max):
+        old_gp_m = re.search(r'^K_GENPATCHES_VER="([^"]+)"', eb_text, re.M)
+        old_gp = old_gp_m.group(1) if old_gp_m else None
+        old_eb.unlink()
+        entries.pop(f"patch-{old_ver}-xanmod{xm_ver}.xz", None)
+        if old_gp and old_gp != gp_ver:
+            entries.pop(f"genpatches-{new_series}-{old_gp}.base.tar.xz", None)
+            entries.pop(f"genpatches-{new_series}-{old_gp}.extras.tar.xz", None)
 
     entries[linux_dist] = dist_manifest_line(linux_dist, linux_dl)
     entries[gp_base] = dist_manifest_line(gp_base, gp_base_dl)
@@ -739,24 +805,32 @@ def bump_cachyos(pkg: str, new_full_ver: str, work: Path) -> None:
     new_pv, new_rel = m.group(1), m.group(2)
 
     ebuilds = list_release_ebuilds(pkg)
-    old_ver, old_eb = ebuilds[-1]
+    new_series = ".".join(new_pv.split(".")[:2])
+    same_series = [(v, eb) for v, eb in ebuilds if ".".join(v.split(".")[:2]) == new_series]
+    if not same_series:
+        latest_ver = ebuilds[-1][0]
+        raise BumpError(
+            f"cachyos-sources minor series jump ({latest_ver} -> {new_full_ver}) "
+            f"requires manual review of CachyOS/{new_series} patch list and ZFS gate."
+        )
+    old_ver, old_eb = same_series[-1]
     old_text = old_eb.read_text(encoding="utf-8")
     old_rel_m = re.search(r'^CACHYOS_RELEASE="([^"]+)"', old_text, re.M)
     old_rel = old_rel_m.group(1) if old_rel_m else "1"
     if f"{old_ver}-{old_rel}" == new_full_ver:
         raise BumpSkip(f"{pkg} already at {new_full_ver}")
 
-    old_series = ".".join(old_ver.split(".")[:2])
-    new_series = ".".join(new_pv.split(".")[:2])
-    if old_series != new_series:
-        raise BumpError(
-            f"cachyos-sources minor series jump ({old_ver}-{old_rel} -> {new_full_ver}) "
-            f"requires manual review of CachyOS/{new_series} patch list and ZFS gate."
-        )
     if new_pv == old_ver:
         raise BumpError(
             f"cachyos-sources same-PV release bump ({old_ver}-{old_rel} -> {new_full_ver}) "
             f"would collide on distfile name cachyos-sources-{new_pv}.tar.gz; needs -r revision handling."
+        )
+
+    zfs_ver, zfs_max = get_gentoo_stable_zfs_info()
+    if version_key(new_series) > version_key(zfs_max) and not ebuild_forbids_zfs(old_text):
+        raise BumpError(
+            f"cachyos-sources {new_full_ver} exceeds stable sys-fs/zfs-{zfs_ver} MODULES_KERNEL_MAX={zfs_max}, "
+            f"but template ebuild does not gate REQUIRED_USE=\"!zfs\"."
         )
 
     gp_ver = get_gentoo_genpatches_ver(new_pv)
@@ -842,15 +916,16 @@ def bump_cachyos(pkg: str, new_full_ver: str, work: Path) -> None:
     new_eb.write_text(new_text, encoding="utf-8")
 
     entries = parse_manifest(pdir / "Manifest")
-    old_gp_m = re.search(r'^K_GENPATCHES_VER="([^"]+)"', old_text, re.M)
-    old_gp = old_gp_m.group(1) if old_gp_m else None
-    old_eb.unlink()
-    for k in list(entries):
-        if k.startswith(f"cachyos-sources-{old_ver}"):
-            entries.pop(k, None)
-    if old_gp and old_gp != gp_ver:
-        entries.pop(f"genpatches-{old_series}-{old_gp}.base.tar.xz", None)
-        entries.pop(f"genpatches-{old_series}-{old_gp}.extras.tar.xz", None)
+    if not keep_old_kernel_for_zfs(pkg, old_eb, new_pv, new_text, zfs_max):
+        old_gp_m = re.search(r'^K_GENPATCHES_VER="([^"]+)"', old_text, re.M)
+        old_gp = old_gp_m.group(1) if old_gp_m else None
+        old_eb.unlink()
+        for k in list(entries):
+            if k.startswith(f"cachyos-sources-{old_ver}"):
+                entries.pop(k, None)
+        if old_gp and old_gp != gp_ver:
+            entries.pop(f"genpatches-{new_series}-{old_gp}.base.tar.xz", None)
+            entries.pop(f"genpatches-{new_series}-{old_gp}.extras.tar.xz", None)
 
     entries[src_dist] = dist_manifest_line(src_dist, src_dl)
     entries[gp_base] = dist_manifest_line(gp_base, gp_base_dl)
@@ -988,6 +1063,28 @@ def detect_updates(only_pkg: str | None = None) -> dict[str, Any]:
                 )
         except Exception as exc:
             errors.append({"pkg": "net-im/wechat", "error": str(exc)})
+
+    # Notify if Gentoo stable sys-fs/zfs now supports a kernel series currently gated by !zfs
+    if only_pkg in (None, "sys-kernel/xanmod-sources", "sys-kernel/cachyos-sources"):
+        try:
+            zfs_ver, zfs_max = get_gentoo_stable_zfs_info()
+            for kpkg in ("sys-kernel/xanmod-sources", "sys-kernel/cachyos-sources"):
+                if only_pkg and only_pkg != kpkg:
+                    continue
+                for ver, eb in list_release_ebuilds(kpkg):
+                    series = ".".join(ver.split(".")[:2])
+                    if ebuild_forbids_zfs(eb.read_text(encoding="utf-8")) and version_key(series) <= version_key(zfs_max):
+                        errors.append(
+                            {
+                                "pkg": kpkg,
+                                "error": (
+                                    f"Gentoo stable sys-fs/zfs-{zfs_ver} now declares MODULES_KERNEL_MAX={zfs_max}, "
+                                    f"which covers {kpkg}-{ver}. You can now unlock USE=zfs on the {series} series!"
+                                ),
+                            }
+                        )
+        except Exception as exc:
+            errors.append({"pkg": "sys-fs/zfs-check", "error": str(exc)})
 
     return {"updates": updates, "errors": errors}
 
