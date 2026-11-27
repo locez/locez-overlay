@@ -35,6 +35,7 @@ RDEPEND="
 	${DEPEND}
 	dev-python/aiohttp[${PYTHON_USEDEP}]
 	dev-python/dbus-fast[${PYTHON_USEDEP}]
+	>=dev-python/keyring-25.7.0[${PYTHON_USEDEP}]
 	dev-python/pyqt6[gui,svg,widgets,${PYTHON_USEDEP}]
 	>=dev-python/pyyaml-6.0[${PYTHON_USEDEP}]
 	dev-python/qasync[${PYTHON_USEDEP}]
