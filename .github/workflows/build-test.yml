@@ -21,7 +21,9 @@ on:
         default: "ubuntu-latest"
         options:
           - "ubuntu-latest"
+          - "self-hosted-x64"
           - "self-hosted-arm64"
+          - "self-hosted-both"
   workflow_call:
     inputs:
       packages_json:
@@ -63,9 +65,24 @@ jobs:
             git fetch origin "${{ github.base_ref }}" --depth=1 || true
             PKGS=$(python3 .github/autobump/main.py changed-packages --base "origin/${{ github.base_ref }}")
           fi
-          COMPACT=$(echo "$PKGS" | jq -c '.')
+          RUNNER_CHOICE="${{ inputs.runner }}"
+          case "$RUNNER_CHOICE" in
+            self-hosted-x64)
+              RUNNERS_JSON='[{"arch":"x64","runner":["self-hosted","Linux","X64"]}]'
+              ;;
+            self-hosted-arm64)
+              RUNNERS_JSON='[{"arch":"arm64","runner":["self-hosted","Linux","ARM64"]}]'
+              ;;
+            self-hosted-both)
+              RUNNERS_JSON='[{"arch":"x64","runner":["self-hosted","Linux","X64"]},{"arch":"arm64","runner":["self-hosted","Linux","ARM64"]}]'
+              ;;
+            *)
+              RUNNERS_JSON='[{"arch":"x64","runner":"ubuntu-latest"}]'
+              ;;
+          esac
+          COMPACT=$(echo "$PKGS" | jq -c --argjson runners "$RUNNERS_JSON" '[.[] as $p | $runners[] as $r | ($p + $r)]')
           COUNT=$(echo "$COMPACT" | jq 'length')
-          PKG_ARGS=$(echo "$COMPACT" | jq -r '.[].pkg' | tr '\n' ' ')
+          PKG_ARGS=$(echo "$PKGS" | jq -r '.[].pkg' | tr '\n' ' ')
           echo "matrix=$COMPACT" >> "$GITHUB_OUTPUT"
           echo "pkg_args=$PKG_ARGS" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
@@ -81,9 +98,10 @@ jobs:
           args: --exit error ${{ steps.plan.outputs.pkg_args }}
 
   build-test:
+    name: build-test (${{ matrix.pkg }}, ${{ matrix.arch }})
     needs: plan
     if: needs.plan.outputs.has_packages == 'true'
-    runs-on: ${{ inputs.runner == 'self-hosted-arm64' && fromJSON('["self-hosted", "Linux", "ARM64"]') || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -104,7 +122,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: build-logs-${{ matrix.slug }}
+          name: build-logs-${{ matrix.slug }}-${{ matrix.arch }}
           path: /tmp/build-logs
           if-no-files-found: ignore
           retention-days: 7
