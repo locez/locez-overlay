@@ -14,7 +14,7 @@ This document is the primary operating manual for human maintainers and AI codin
   - `metadata/autobump.toml` — Single declarative source of truth for all package automation, build/test modes, retention policies, and notifications.
   - `.github/smoke/<category>/<pn>.sh` — Multi-line integration smoke-test scripts (shared helpers in `.github/smoke/_shared/`).
   - `.github/autobump/engine/` — 100% overlay-agnostic Python automation engine (stdlib only, Python 3.11+).
-  - `.github/autobump/engine/plugins/` — Registered bump strategies (`pypi`, `github-release`, `cider`, `proton-ge`, `dwproton`, `tencent-qq`, `wechat`, `go-vendor`, `rust-vendor`, `rust-crates`, `kernel-xanmod`, `kernel-cachyos`).
+  - `.github/autobump/engine/plugins/` — Registered bump strategies (`pypi`, `github-release`, `cider`, `proton-ge`, `dwproton`, `tencent-qq`, `wechat`, `feishu`, `dingtalk`, `wps-office`, `go-vendor`, `rust-vendor`, `rust-crates`, `kernel-xanmod`, `kernel-cachyos`).
   - `overlay.distfiles_repo` (`locez/locez-overlay-distfiles`) — Dedicated public GitHub repo hosting Go/Rust `${P}-deps.tar.xz` tarballs under release tag `${CATEGORY}-${PN}-${PV}`.
   - `.github/autobump/tests/test_engine.py` — Zero-dependency `unittest` suite.
   - `.github/actions/gentoo-build-test/action.yml` — Reusable Composite Action running real `gentoo/stage3` builds + smoke tests with daily Portage tree cache and weekly CI binpkg cache.

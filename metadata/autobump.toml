@@ -184,6 +184,46 @@ detect = { type = "none" }
 build = { mode = "emerge-bin", use = ["bwrap"] }
 smoke_test = "test -x /opt/minecraft-launcher/minecraft-launcher && test -x /opt/minecraft-launcher/minecraft-launcher-wrapper"
 
+[packages."app-office/bytedance-feishu"]
+detect = { type = "nvchecker", source = "regex", url = "https://www.feishu.cn/api/downloads", regex = 'Feishu-linux_x64-([0-9]+(?:\.[0-9]+)+)\.deb' }
+strategy = "feishu"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+smoke_test = "test -x /opt/bytedance/feishu/feishu && test -L /usr/bin/bytedance-feishu-stable && test -f /usr/share/applications/bytedance-feishu.desktop"
+
+[packages."app-office/wps-office"]
+detect = { type = "nvchecker", source = "regex", url = "https://linux.wps.cn/", regex = 'wps-office_([0-9]+(?:\.[0-9]+)+)\.AK\.preread\.sw\.Personal_[0-9]+_amd64\.deb' }
+strategy = "wps-office"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+smoke_test = "test -x /usr/bin/wps && test -x /opt/kingsoft/wps-office/office6/wps && ls /usr/share/applications/wps-office-*.desktop >/dev/null"
+
+[packages."media-fonts/ttf-wps-fonts"]
+detect = { type = "none" }
+build = { mode = "emerge-full", test = false }
+smoke_test = "test -d /usr/share/fonts/wps-fonts && ls /usr/share/fonts/wps-fonts/*.ttf /usr/share/fonts/wps-fonts/*.TTF >/dev/null 2>&1"
+weekly_live_test = true
+
+[packages."net-im/dingtalk"]
+detect = { type = "nvchecker", source = "httpheader", url = "https://www.dingtalk.com/win/d/qd=linux_amd64", method = "GET", follow_redirects = false, header = "location", regex = 'com\.alibabainc\.dingtalk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
+strategy = "dingtalk"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+smoke_test = "test -L /usr/bin/dingtalk && test -x /opt/apps/com.alibabainc.dingtalk/files/Elevator.sh && test -f /usr/share/applications/com.alibabainc.dingtalk.desktop"
+
+[packages."net-misc/baidunetdisk"]
+detect = { type = "nvchecker", source = "regex", url = "https://pan.baidu.com/disk/cmsdata?do=client", regex = 'baidunetdisk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
+strategy = "github-release"
+url_template = "https://issuecdn.baidupcs.com/issue/netdisk/LinuxGuanjia/{ver}/baidunetdisk_{ver}_amd64.deb"
+dist_template = "baidunetdisk_{ver}_amd64.deb"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+smoke_test = "test -x /opt/baidunetdisk/baidunetdisk && test -L /opt/bin/baidunetdisk && test -f /usr/share/applications/baidunetdisk.desktop"
+
 [packages."virtual/linux-sources"]
 detect = { type = "none" }
 build = { mode = "dep-resolve" }

@@ -10,6 +10,7 @@ from typing import Any
 from ..common import BumpError, BumpSkip, get_local_version
 from ..schema import AutomationConfig
 from .base import BumpContext, Strategy
+from .cn_apps import bump_dingtalk, bump_feishu, bump_wps_office
 from .go_vendor import bump_go_vendor
 from .kernel import bump_cachyos, bump_xanmod
 from .proton import bump_dwproton, bump_proton_ge
@@ -27,6 +28,9 @@ STRATEGIES: dict[str, Strategy] = {
     "dwproton": bump_dwproton,
     "tencent-qq": bump_tencent_qq,
     "wechat": bump_wechat,
+    "feishu": bump_feishu,
+    "dingtalk": bump_dingtalk,
+    "wps-office": bump_wps_office,
     "go-vendor": bump_go_vendor,
     "rust-vendor": bump_rust_vendor,
     "rust-crates": bump_rust_crates,

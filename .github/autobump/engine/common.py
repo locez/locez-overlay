@@ -68,6 +68,32 @@ def http_head(url: str, timeout: int = 30) -> dict[str, str]:
         raise BumpError(f"HTTP HEAD failed for {url}: {exc}") from exc
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        return None
+
+
+def http_get_redirect_location(url: str, timeout: int = 30) -> str:
+    """Issue a non-following HTTP GET and return the 3xx Location header."""
+    opener = urllib.request.build_opener(_NoRedirectHandler())
+    req = urllib.request.Request(url, method="GET", headers={"User-Agent": USER_AGENT})
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            loc = resp.headers.get("Location") or ""
+            if loc:
+                return loc
+            raise BumpError(f"Expected redirect Location header from {url}, got HTTP {resp.status}")
+    except urllib.error.HTTPError as exc:
+        loc = exc.headers.get("Location") if exc.headers else None
+        if loc:
+            return loc
+        raise BumpError(f"HTTP GET redirect probe failed for {url}: HTTP {exc.code}") from exc
+    except BumpError:
+        raise
+    except Exception as exc:
+        raise BumpError(f"HTTP GET redirect probe failed for {url}: {exc}") from exc
+
+
 def gh_api_json(path: str) -> Any:
     headers = {"Accept": "application/vnd.github+json"}
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
