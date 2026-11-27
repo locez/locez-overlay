@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -15,9 +16,64 @@ from .retention import ebuild_forbids_zfs
 from .schema import AutomationConfig, generate_nvchecker_toml
 
 
-def detect_updates(cfg: AutomationConfig, *, only_pkg: str | None = None) -> dict[str, Any]:
+def _fetch_open_failure_titles(cfg: AutomationConfig) -> list[str]:
+    repo = cfg.overlay.repository
+    label = cfg.notify.github_label
+    if not repo or not cfg.notify.github_issue:
+        return []
+    res = run(
+        [
+            "gh",
+            "issue",
+            "list",
+            "-R",
+            repo,
+            "--state",
+            "open",
+            "--label",
+            label,
+            "--limit",
+            "100",
+            "--json",
+            "title",
+        ],
+        check=False,
+    )
+    if res.returncode != 0 or not res.stdout.strip():
+        return []
+    try:
+        return [str(item.get("title", "")) for item in json.loads(res.stdout)]
+    except json.JSONDecodeError:
+        return []
+
+
+def filter_throttled_updates(
+    updates: list[dict[str, str]],
+    open_issue_titles: list[str],
+    label: str,
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Skip updates whose exact (pkg, upstream_ver) already has an open failure issue."""
+    kept: list[dict[str, str]] = []
+    throttled: list[dict[str, str]] = []
+    for item in updates:
+        prefix = f"[{label}] {item['pkg']}:"
+        ver_re = re.compile(rf"->\s+{re.escape(item['upstream_ver'])}(?:\s|\(|$)")
+        if any(t.startswith(prefix) and ver_re.search(t) for t in open_issue_titles):
+            throttled.append({**item, "reason": "open failure issue already exists for this version"})
+        else:
+            kept.append(item)
+    return kept, throttled
+
+
+def detect_updates(
+    cfg: AutomationConfig,
+    *,
+    only_pkg: str | None = None,
+    throttle_failed: bool = False,
+) -> dict[str, Any]:
     """Run nvchecker (generated from autobump.toml), custom probes, and ZFS unlock checks."""
     updates: list[dict[str, str]] = []
+    throttled: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     zfs_alerts: list[dict[str, str]] = []
 
@@ -114,4 +170,8 @@ def detect_updates(cfg: AutomationConfig, *, only_pkg: str | None = None) -> dic
         except Exception as exc:
             errors.append({"pkg": "sys-fs/zfs-check", "error": str(exc)})
 
-    return {"updates": updates, "errors": errors, "zfs_alerts": zfs_alerts}
+    if throttle_failed and updates:
+        open_titles = _fetch_open_failure_titles(cfg)
+        updates, throttled = filter_throttled_updates(updates, open_titles, cfg.notify.github_label)
+
+    return {"updates": updates, "throttled": throttled, "errors": errors, "zfs_alerts": zfs_alerts}

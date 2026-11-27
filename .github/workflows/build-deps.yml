@@ -132,6 +132,7 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.count != '0'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
     strategy:

@@ -104,7 +104,7 @@ strategy = "cider"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "test -x /opt/cider/Cider && test -L /usr/bin/cider && test -f /usr/share/applications/cider.desktop"
+smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/cider/Cider && test -L /usr/bin/cider && test -f /usr/share/applications/cider.desktop"
 
 [packages."net-im/tencent-qq"]
 detect = { type = "nvchecker", source = "regex", url = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js", regex = 'QQ_([0-9]+(?:\.[0-9]+)+_[0-9]+)_amd64_01\.deb', from_pattern = "_([0-9]+)$", to_pattern = "_p\\1" }
@@ -112,7 +112,7 @@ strategy = "tencent-qq"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin", use = ["bwrap", "system-fdk-aac", "system-libssh2", "system-openh264", "system-zlib"] }
-smoke_test = "test -x /usr/bin/qq && test -x /opt/QQ/qq && test -f /usr/share/applications/qq.desktop"
+smoke_test = "test -x /usr/bin/qq && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/QQ/qq && test -f /usr/share/applications/qq.desktop"
 
 [packages."net-im/wechat"]
 detect = { type = "wechat-head" }
@@ -120,7 +120,7 @@ strategy = "wechat"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin", use = ["bwrap"] }
-smoke_test = "test -x /usr/bin/wechat && test -x /opt/wechat/wechat && test -f /usr/share/applications/wechat.desktop"
+smoke_test = "test -x /usr/bin/wechat && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/wechat/wechat && test -f /usr/share/applications/wechat.desktop"
 
 [packages."net-misc/tsshd"]
 detect = { type = "nvchecker", source = "github", github = "trzsz/tsshd", use_latest_release = true, prefix = "v" }
@@ -177,7 +177,7 @@ weekly_live_test = true
 [packages."media-sound/qqmusic"]
 detect = { type = "none" }
 build = { mode = "emerge-bin" }
-smoke_test = "test -x /usr/bin/qqmusic && test -x /opt/qqmusic/qqmusic"
+smoke_test = "test -x /usr/bin/qqmusic && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/qqmusic/qqmusic"
 
 [packages."games-action/minecraft-launcher"]
 detect = { type = "none" }
@@ -190,7 +190,7 @@ strategy = "feishu"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "test -x /opt/bytedance/feishu/feishu && test -L /usr/bin/bytedance-feishu-stable && test -f /usr/share/applications/bytedance-feishu.desktop"
+smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/bytedance/feishu/feishu && test -L /usr/bin/bytedance-feishu-stable && test -f /usr/share/applications/bytedance-feishu.desktop"
 
 [packages."app-office/wps-office"]
 detect = { type = "nvchecker", source = "regex", url = "https://linux.wps.cn/", regex = 'wps-office_([0-9]+(?:\.[0-9]+)+)\.AK\.preread\.sw\.Personal_[0-9]+_amd64\.deb' }
@@ -198,7 +198,7 @@ strategy = "wps-office"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "test -x /usr/bin/wps && test -x /opt/kingsoft/wps-office/office6/wps && ls /usr/share/applications/wps-office-*.desktop >/dev/null"
+smoke_test = "test -x /usr/bin/wps && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/kingsoft/wps-office/office6/wps && ls /usr/share/applications/wps-office-*.desktop >/dev/null"
 
 [packages."media-fonts/ttf-wps-fonts"]
 detect = { type = "none" }
@@ -212,7 +212,7 @@ strategy = "dingtalk"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "test -L /usr/bin/dingtalk && test -x /opt/apps/com.alibabainc.dingtalk/files/Elevator.sh && test -f /usr/share/applications/com.alibabainc.dingtalk.desktop"
+smoke_test = "test -L /usr/bin/dingtalk && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/apps/com.alibabainc.dingtalk/files/*/com.alibabainc.dingtalk && test -f /usr/share/applications/com.alibabainc.dingtalk.desktop"
 
 [packages."net-misc/baidunetdisk"]
 detect = { type = "nvchecker", source = "regex", url = "https://pan.baidu.com/disk/cmsdata?do=client", regex = 'baidunetdisk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
@@ -222,7 +222,7 @@ dist_template = "baidunetdisk_{ver}_amd64.deb"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "test -x /opt/baidunetdisk/baidunetdisk && test -L /opt/bin/baidunetdisk && test -f /usr/share/applications/baidunetdisk.desktop"
+smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/baidunetdisk/baidunetdisk && test -L /opt/bin/baidunetdisk && test -f /usr/share/applications/baidunetdisk.desktop"
 
 [packages."virtual/linux-sources"]
 detect = { type = "none" }

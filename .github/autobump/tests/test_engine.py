@@ -32,7 +32,8 @@ from engine.deps import (
     parse_primary_src_uri,
     rewrite_ebuild_deps_metadata,
 )
-from engine.notify import format_telegram_event
+from engine.detect import filter_throttled_updates
+from engine.notify import extract_log_excerpt, format_telegram_event
 from engine.plugins import STRATEGIES
 from engine.plugins.kernel import _extract_filesdir_patches
 from engine.plugins.rust import parse_crates_from_ebuild
@@ -198,6 +199,26 @@ class TestGuardrailsContextAndNotify(unittest.TestCase):
         )
         self.assertIn("&lt;tag&gt; &amp; error", msg)
         self.assertIn("https://example.com/?a=1&amp;b=2", msg)
+
+    def test_log_excerpt_ansi_stripping_and_throttle_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "missing.log"
+            log = Path(tmp) / "build.log"
+            log.write_text("\x1b[31mERROR:\x1b[0m pytest failed\nline2\n", encoding="utf-8")
+            excerpt = extract_log_excerpt([missing, log], max_lines=5)
+            self.assertEqual(excerpt, "ERROR: pytest failed\nline2")
+
+        updates = [
+            {"pkg": "app-office/wps-office", "upstream_ver": "12.1.2.30000"},
+            {"pkg": "app-office/wps-office", "upstream_ver": "12.1.2.30001"},
+            {"pkg": "net-im/dingtalk", "upstream_ver": "9.0.1"},
+        ]
+        open_titles = [
+            "[autobump-failed] app-office/wps-office: 12.1.2.29183 -> 12.1.2.30000 (build-test failed)",
+        ]
+        kept, throttled = filter_throttled_updates(updates, open_titles, "autobump-failed")
+        self.assertEqual([u["upstream_ver"] for u in kept], ["12.1.2.30001", "9.0.1"])
+        self.assertEqual([u["upstream_ver"] for u in throttled], ["12.1.2.30000"])
 
     def test_cli_config_info_and_live_packages(self) -> None:
         info = json.loads(

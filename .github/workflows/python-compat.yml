@@ -46,6 +46,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.has_updates == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: write
@@ -196,6 +197,8 @@ jobs:
             --pkg "$PKG" \
             --title "PYTHON_COMPAT sync ${MAX_T} (${STAGE} failed)" \
             --detail "$SUMMARY" \
+            --log-file /tmp/py-build-logs/build.log \
+            --log-file /tmp/py-build-logs/console.log \
             --run-url "$RUN_URL"
 
       - name: Attempt pluggable AI repair (Draft PR only)

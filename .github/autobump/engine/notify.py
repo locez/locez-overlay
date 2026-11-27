@@ -5,13 +5,34 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from .common import USER_AGENT, run
 from .schema import AutomationConfig
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def extract_log_excerpt(log_paths: list[Path], *, max_lines: int = 45, max_chars: int = 3500) -> str:
+    """Return a clean, ANSI-stripped tail from the first existing non-empty log file."""
+    for path in log_paths:
+        if not path.is_file():
+            continue
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+        if not raw:
+            continue
+        clean = _ANSI_ESCAPE_RE.sub("", raw)
+        lines = clean.splitlines()[-max_lines:]
+        excerpt = "\n".join(lines).strip()
+        if len(excerpt) > max_chars:
+            excerpt = "...(truncated)\n" + excerpt[-(max_chars - 16) :]
+        return excerpt
+    return ""
 
 
 def send_telegram(text_html: str) -> bool:
@@ -174,6 +195,7 @@ def notify_event(
     pkg: str,
     title: str,
     detail: str = "",
+    log_excerpt: str = "",
     run_url: str = "",
     pr_url: str = "",
 ) -> dict[str, Any]:
@@ -187,6 +209,13 @@ def notify_event(
         gh_body = f"{mention}{title}\n\n"
         if detail:
             gh_body += f"```\n{detail.strip()[:4000]}\n```\n\n"
+        if log_excerpt:
+            gh_body += (
+                "<details>\n"
+                "<summary>Failure log excerpt (tail)</summary>\n\n"
+                f"```text\n{log_excerpt.strip()}\n```\n"
+                "</details>\n\n"
+            )
         if run_url:
             gh_body += f"Workflow run: {run_url}\n"
         if event == "failed":

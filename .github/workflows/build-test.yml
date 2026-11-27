@@ -29,6 +29,10 @@ on:
 
 jobs:
   plan:
+    if: >
+      github.event_name != 'pull_request' ||
+      (!startsWith(github.head_ref, 'autobump/') &&
+       !startsWith(github.head_ref, 'python-compat/'))
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -65,6 +69,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.has_packages == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:

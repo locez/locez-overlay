@@ -38,10 +38,15 @@ jobs:
         id: detect
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ARGS="detect --result-file /tmp/detect.json"
           if [ -n "${{ inputs.package }}" ]; then
             ARGS="$ARGS --only ${{ inputs.package }}"
+          elif [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%u)" != "1" ]; then
+            # On Tue-Sun scheduled runs, throttle versions that already have an open failure issue;
+            # Mondays and manual runs always retry everything.
+            ARGS="$ARGS --throttle-failed"
           fi
           python3 .github/autobump/main.py $ARGS
 
@@ -90,6 +95,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.has_updates == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: write
@@ -133,10 +139,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISTFILES_TOKEN: ${{ secrets.DISTFILES_TOKEN }}
         run: |
+          mkdir -p /tmp/bump-distfiles
           python3 .github/autobump/main.py bump \
             --pkg "${{ matrix.pkg }}" \
             --target "${{ matrix.upstream_ver }}" \
             --upload-vendor \
+            --distdir /tmp/bump-distfiles \
             --result-file /tmp/bump-result.json || true
 
           STATUS=$(jq -r '.status // "failed"' /tmp/bump-result.json)
@@ -162,6 +170,7 @@ jobs:
         with:
           package: ${{ matrix.pkg }}
           log-dir: /tmp/build-logs
+          distdir: /tmp/bump-distfiles
 
       - name: Create PR and apply merge policy
         id: pr
@@ -285,6 +294,8 @@ jobs:
             --pkg "$PKG" \
             --title "${LOCAL_VER} -> ${NEW_VER} (${STAGE} failed)" \
             --detail "$SUMMARY" \
+            --log-file /tmp/build-logs/build.log \
+            --log-file /tmp/build-logs/console.log \
             --run-url "$RUN_URL"
 
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
@@ -335,6 +346,7 @@ jobs:
         with:
           package: ${{ matrix.pkg }}
           log-dir: /tmp/ai-build-logs
+          distdir: /tmp/bump-distfiles
 
       - name: Open AI Draft PR & notify
         if: steps.ai_run.outputs.status == 'patched' && steps.ai_pkgcheck.outcome == 'success' && steps.ai_build.outcome == 'success'

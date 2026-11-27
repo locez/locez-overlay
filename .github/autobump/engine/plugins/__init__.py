@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..common import BumpError, BumpSkip, get_local_version
+from ..common import BumpError, BumpSkip, get_local_version, parse_manifest
 from ..schema import AutomationConfig
 from .base import BumpContext, Strategy
 from .cn_apps import bump_dingtalk, bump_feishu, bump_wps_office
@@ -45,6 +45,7 @@ def bump_package(
     target_ver: str,
     *,
     upload_vendor: bool = False,
+    distdir: Path | None = None,
 ) -> dict[str, Any]:
     spec = cfg.get_package(pkg)
     local_ver = get_local_version(cfg.repo_root, pkg, spec.strategy) or "unknown"
@@ -62,6 +63,13 @@ def bump_package(
             upload_vendor=upload_vendor,
         )
         resolved_ver = strategy_fn(ctx) or target_ver
+        if distdir is not None:
+            distdir.mkdir(parents=True, exist_ok=True)
+            manifest_dists = parse_manifest(ctx.pkg_dir / "Manifest")
+            for distname in manifest_dists:
+                src_file = work / distname
+                if src_file.is_file():
+                    shutil.move(str(src_file), str(distdir / distname))
         return {
             "pkg": pkg,
             "slug": spec.slug,

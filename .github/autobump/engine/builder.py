@@ -112,7 +112,7 @@ def render_container_test_script(
         "cat >> /etc/portage/make.conf <<'MAKECONF'",
         'ACCEPT_LICENSE="*"',
         'CONFIG_PROTECT="-*"',
-        'FEATURES="${FEATURES} -sandbox -usersandbox -ipc-sandbox -network-sandbox -pid-sandbox -merge-sync -binpkg-request-signature buildpkg parallel-fetch parallel-install qa-unresolved-soname-deps"',
+        'FEATURES="${FEATURES} -sandbox -usersandbox -ipc-sandbox -network-sandbox -pid-sandbox -userfetch -merge-sync -binpkg-request-signature buildpkg parallel-fetch parallel-install qa-unresolved-soname-deps"',
         f"PORTAGE_LOGDIR={shlex.quote(log_dir)}",
         "MAKECONF",
         'echo "MAKEOPTS=\\"-j${NPROC}\\"" >> /etc/portage/make.conf',

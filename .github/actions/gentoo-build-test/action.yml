@@ -17,6 +17,10 @@ inputs:
     description: "Host directory where build logs and console.log are written"
     required: false
     default: "/tmp/build-logs"
+  distdir:
+    description: "Optional host directory containing pre-fetched distfiles to mount at /var/cache/distfiles"
+    required: false
+    default: ""
   free-disk:
     description: "Free extra runner disk space before starting container (useful for kernels/Proton)"
     required: false
@@ -111,6 +115,11 @@ runs:
 
         IMAGE="$(python3 .github/autobump/main.py config-info | jq -r '.build.stage3_image')"
 
+        DISTDIR_MOUNT=()
+        if [ -n "${{ inputs.distdir }}" ] && [ -d "${{ inputs.distdir }}" ]; then
+          DISTDIR_MOUNT=(-v "${{ inputs.distdir }}:/var/cache/distfiles")
+        fi
+
         set +e
         docker run --rm \
           -v "${{ github.workspace }}:/overlay:ro" \
@@ -118,6 +127,7 @@ runs:
           -v "${LOG_DIR}:/build-logs" \
           -v "${TREE_DIR}:/var/db/repos/gentoo" \
           -v "${BINPKG_DIR}:/var/cache/binpkgs" \
+          "${DISTDIR_MOUNT[@]}" \
           "$IMAGE" \
           bash /run-build-test.sh 2>&1 | tee "${LOG_DIR}/console.log"
         DOCKER_EXIT="${PIPESTATUS[0]}"

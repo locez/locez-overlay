@@ -14,7 +14,7 @@ from .common import get_local_version
 from .context import collect_failure_context
 from .deps import build_deps_for_package, resolve_packages_deps
 from .detect import detect_updates
-from .notify import close_github_failure_issue, notify_event
+from .notify import close_github_failure_issue, extract_log_excerpt, notify_event
 from .plugins import bump_package
 from .python_compat import apply_python_compat_sync, scan_python_compat_updates
 from .repair import run_ai_repair
@@ -42,11 +42,12 @@ def _cmd_config_info(cfg: AutomationConfig, _args: argparse.Namespace) -> int:
 
 
 def _cmd_detect(cfg: AutomationConfig, args: argparse.Namespace) -> int:
-    _emit(detect_updates(cfg, only_pkg=args.only), args.result_file)
+    _emit(detect_updates(cfg, only_pkg=args.only, throttle_failed=args.throttle_failed), args.result_file)
     return 0
 
 
 def _cmd_bump(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    distdir = Path(args.distdir) if args.distdir else None
     if args.pkg:
         target = args.target
         if not target:
@@ -70,7 +71,7 @@ def _cmd_bump(cfg: AutomationConfig, args: argparse.Namespace) -> int:
                     args.result_file,
                 )
                 return 0
-        res = bump_package(cfg, args.pkg, target, upload_vendor=args.upload_vendor)
+        res = bump_package(cfg, args.pkg, target, upload_vendor=args.upload_vendor, distdir=distdir)
         _emit(res, args.result_file)
         return 1 if res["status"] == "failed" else 0
 
@@ -78,7 +79,7 @@ def _cmd_bump(cfg: AutomationConfig, args: argparse.Namespace) -> int:
     results = []
     any_failed = bool(det["errors"])
     for item in det["updates"]:
-        r = bump_package(cfg, item["pkg"], item["upstream_ver"], upload_vendor=args.upload_vendor)
+        r = bump_package(cfg, item["pkg"], item["upstream_ver"], upload_vendor=args.upload_vendor, distdir=distdir)
         results.append(r)
         if r["status"] == "failed":
             any_failed = True
@@ -170,12 +171,14 @@ def _cmd_notify(cfg: AutomationConfig, args: argparse.Namespace) -> int:
     detail = args.detail
     if args.detail_file and Path(args.detail_file).is_file():
         detail = Path(args.detail_file).read_text(encoding="utf-8", errors="replace")
+    log_excerpt = extract_log_excerpt([Path(p) for p in args.log_file]) if args.log_file else ""
     res = notify_event(
         cfg,
         event=args.event,
         pkg=args.pkg,
         title=args.title,
         detail=detail,
+        log_excerpt=log_excerpt,
         run_url=args.run_url,
         pr_url=args.pr_url,
     )
@@ -227,6 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("detect", help="Detect outdated packages & ZFS unlock alerts")
     p.add_argument("--only", help="Filter to a single package")
+    p.add_argument("--throttle-failed", action="store_true", help="Skip versions that already have an open failure issue")
     p.add_argument("--result-file")
     p.set_defaults(func=_cmd_detect)
 
@@ -236,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     grp.add_argument("--all", action="store_true", help="Bump all outdated packages")
     p.add_argument("--target", help="Target version for --pkg")
     p.add_argument("--upload-vendor", action="store_true")
+    p.add_argument("--distdir", help="Optional directory to preserve downloaded distfiles for stage3 reuse")
     p.add_argument("--result-file")
     p.set_defaults(func=_cmd_bump)
 
@@ -282,6 +287,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--title", required=True)
     p.add_argument("--detail", default="")
     p.add_argument("--detail-file", default="")
+    p.add_argument("--log-file", action="append", default=[], help="Candidate log file(s) to attach tail excerpt to GitHub Issue")
     p.add_argument("--run-url", default="")
     p.add_argument("--pr-url", default="")
     p.set_defaults(func=_cmd_notify)

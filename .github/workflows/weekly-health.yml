@@ -31,6 +31,7 @@ jobs:
     needs: plan-live
     if: needs.plan-live.outputs.has_live == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
       issues: write
