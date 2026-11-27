@@ -25,27 +25,25 @@ jobs:
       has_updates: ${{ steps.detect.outputs.has_updates }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
       - name: Install nvchecker
         run: pip install --upgrade nvchecker
 
-      - name: Detect outdated packages
+      - name: Detect outdated packages & ZFS unlock signals
         id: detect
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARGS="--detect --result-file /tmp/detect.json"
+          ARGS="detect --result-file /tmp/detect.json"
           if [ -n "${{ inputs.package }}" ]; then
             ARGS="$ARGS --only ${{ inputs.package }}"
           fi
-          python3 .github/scripts/autobump.py $ARGS
+          python3 .github/autobump/main.py $ARGS
 
           UPDATES=$(jq -c '.updates' /tmp/detect.json)
           COUNT=$(jq '.updates | length' /tmp/detect.json)
@@ -56,32 +54,36 @@ jobs:
             echo "has_updates=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Notify on detection errors
+      - name: Notify on detection errors or ZFS kernel unlock
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ ! -f /tmp/detect.json ]; then
-            exit 0
-          fi
-          ERR_COUNT=$(jq '.errors | length' /tmp/detect.json)
-          if [ "$ERR_COUNT" -eq 0 ]; then
-            exit 0
-          fi
-          gh label create "autobump-failed" --color "d93f0b" --description "Automated package bump failed" 2>/dev/null || true
-          ERR_TEXT=$(jq -r '.errors[] | "- `\(.pkg)`: \(.error)"' /tmp/detect.json)
+          [ -f /tmp/detect.json ] || exit 0
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          TITLE="[autobump-failed] version detection error"
-          EXISTING=$(gh issue list --state open --label "autobump-failed" --search "$TITLE in:title" --json number --jq '.[0].number // empty')
-          BODY="@locez Version detection encountered errors:
 
-          ${ERR_TEXT}
+          jq -c '.zfs_alerts[]?' /tmp/detect.json | while read -r item; do
+            PKG=$(echo "$item" | jq -r '.pkg')
+            MSG=$(echo "$item" | jq -r '.message')
+            python3 .github/autobump/main.py notify \
+              --event zfs_unlocked \
+              --pkg "$PKG" \
+              --title "OpenZFS stable now supports newer kernel series" \
+              --detail "$MSG" \
+              --run-url "$RUN_URL"
+          done
 
-          Workflow run: ${RUN_URL}"
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body "$BODY"
-          else
-            gh issue create --title "$TITLE" --label "autobump-failed" --body "$BODY"
+          ERR_COUNT=$(jq '.errors | length' /tmp/detect.json)
+          if [ "$ERR_COUNT" -gt 0 ]; then
+            ERR_TEXT=$(jq -r '.errors[] | "- \(.pkg): \(.error)"' /tmp/detect.json)
+            python3 .github/autobump/main.py notify \
+              --event failed \
+              --pkg "overlay/detect" \
+              --title "version detection error" \
+              --detail "$ERR_TEXT" \
+              --run-url "$RUN_URL"
           fi
 
   bump:
@@ -98,30 +100,28 @@ jobs:
         include: ${{ fromJson(needs.detect.outputs.matrix) }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      - name: Set up Go (for tsshd vendor tarball)
-        if: matrix.pkg == 'net-misc/tsshd'
+      - name: Set up Go (for go-vendor strategy)
+        if: matrix.strategy == 'go-vendor'
         uses: actions/setup-go@v5
         with:
           go-version: "stable"
 
-      - name: Run autobump script
+      - name: Bump ebuild & Manifest
         id: bump
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 .github/scripts/autobump.py \
+          python3 .github/autobump/main.py bump \
             --pkg "${{ matrix.pkg }}" \
             --target "${{ matrix.upstream_ver }}" \
             --upload-vendor \
@@ -129,10 +129,12 @@ jobs:
 
           STATUS=$(jq -r '.status // "failed"' /tmp/bump-result.json)
           TARGET=$(jq -r '.target_ver // "${{ matrix.upstream_ver }}"' /tmp/bump-result.json)
+          POLICY=$(jq -r '.policy // "pr-only"' /tmp/bump-result.json)
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "target_ver=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "policy=$POLICY" >> "$GITHUB_OUTPUT"
 
-      - name: Run pkgcheck on bumped package
+      - name: Run pkgcheck gate
         id: pkgcheck
         if: steps.bump.outputs.status == 'bumped'
         continue-on-error: true
@@ -140,18 +142,32 @@ jobs:
         with:
           args: --exit error ${{ matrix.pkg }}
 
-      - name: Create and auto-merge Pull Request
-        id: pr
+      - name: Run Gentoo stage3 build & integration smoke test
+        id: build_test
         if: steps.bump.outputs.status == 'bumped' && steps.pkgcheck.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          log-dir: /tmp/build-logs
+
+      - name: Create PR and apply merge policy
+        id: pr
+        if: steps.bump.outputs.status == 'bumped' && steps.pkgcheck.outcome == 'success' && steps.build_test.outcome == 'success'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           PKG="${{ matrix.pkg }}"
           SLUG="${{ matrix.slug }}"
           LOCAL_VER="${{ matrix.local_ver }}"
           NEW_VER="${{ steps.bump.outputs.target_ver }}"
+          POLICY="${{ steps.bump.outputs.policy }}"
           BRANCH="autobump/${SLUG}"
+          BASE=$(python3 .github/autobump/main.py config-info | jq -r '.overlay.base_branch')
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -169,48 +185,55 @@ jobs:
           PR_TITLE="${PKG}: bump ${LOCAL_VER} -> ${NEW_VER}"
           PR_BODY="Automated bump for \`${PKG}\` (\`${LOCAL_VER}\` -> \`${NEW_VER}\`).
 
-          - Manifest updated (BLAKE2B + SHA512)
-          - Package-specific checks passed
+          - Thin Manifest updated (BLAKE2B + SHA512)
           - \`pkgcheck scan --exit error ${PKG}\` passed
-          - Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          - Gentoo \`stage3\` build & integration smoke test passed
+          - Workflow run: ${RUN_URL}"
 
           PR_NUM=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$PR_NUM" ]; then
             gh pr edit "$PR_NUM" --title "$PR_TITLE" --body "$PR_BODY"
+            PR_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUM}"
           else
-            PR_URL=$(gh pr create --base master --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY")
+            PR_URL=$(gh pr create --base "$BASE" --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY")
             PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
           fi
 
-          # Auto-merge with rebase retry in case another matrix job merged concurrently
-          MERGED=false
-          for attempt in 1 2 3 4 5; do
-            if gh pr merge "$PR_NUM" --squash --delete-branch; then
-              MERGED=true
-              break
+          if [ "$POLICY" = "auto-merge" ]; then
+            MERGED=false
+            for attempt in 1 2 3 4 5; do
+              if gh pr merge "$PR_NUM" --squash --delete-branch; then
+                MERGED=true
+                break
+              fi
+              echo "Merge attempt $attempt failed for PR #$PR_NUM, rebasing onto origin/$BASE..."
+              sleep $(( attempt * 3 ))
+              git fetch origin "$BASE"
+              git rebase "origin/$BASE"
+              git push --force origin "$BRANCH"
+            done
+            if [ "$MERGED" != "true" ]; then
+              echo "Failed to auto-merge PR #$PR_NUM after 5 attempts" >&2
+              exit 1
             fi
-            echo "Merge attempt $attempt failed for PR #$PR_NUM, rebasing onto origin/master..."
-            sleep $(( attempt * 3 ))
-            git fetch origin master
-            git rebase origin/master
-            git push --force origin "$BRANCH"
-          done
-
-          if [ "$MERGED" != "true" ]; then
-            echo "Failed to auto-merge PR #$PR_NUM after 5 attempts" >&2
-            exit 1
+            python3 .github/autobump/main.py close-issue \
+              --pkg "$PKG" \
+              --comment "Resolved and auto-merged via PR #${PR_NUM} (\`${NEW_VER}\`)."
+            python3 .github/autobump/main.py notify \
+              --event merged \
+              --pkg "$PKG" \
+              --title "${LOCAL_VER} -> ${NEW_VER} merged" \
+              --pr-url "$PR_URL" \
+              --run-url "$RUN_URL"
           fi
 
-          # Auto-close any previously opened failure issue for this package
-          FAIL_ISSUE=$(gh issue list --state open --label "autobump-failed" --search "[autobump-failed] ${PKG} in:title" --json number --jq '.[0].number // empty')
-          if [ -n "$FAIL_ISSUE" ]; then
-            gh issue close "$FAIL_ISSUE" --comment "Resolved and auto-merged via PR #${PR_NUM} (\`${NEW_VER}\`)."
-          fi
-
-      - name: Notify maintainer on failure
-        if: steps.bump.outputs.status == 'failed' || (steps.bump.outputs.status == 'bumped' && (steps.pkgcheck.outcome != 'success' || steps.pr.outcome != 'success'))
+      - name: Collect FailureContext & notify (GitHub + Telegram)
+        id: on_fail
+        if: steps.bump.outputs.status == 'failed' || (steps.bump.outputs.status == 'bumped' && (steps.pkgcheck.outcome != 'success' || steps.build_test.outcome != 'success' || steps.pr.outcome != 'success'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           PKG="${{ matrix.pkg }}"
           LOCAL_VER="${{ matrix.local_ver }}"
@@ -218,38 +241,126 @@ jobs:
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           if [ "${{ steps.bump.outputs.status }}" = "failed" ]; then
-            REASON=$(jq -r '.message // "Unknown autobump error"' /tmp/bump-result.json)
+            STAGE="bump"
+            SUMMARY=$(jq -r '.message // "Unknown bump error"' /tmp/bump-result.json)
           elif [ "${{ steps.pkgcheck.outcome }}" != "success" ]; then
-            REASON="pkgcheck scan --exit error failed for ${PKG} ${NEW_VER}. Check workflow logs."
+            STAGE="pkgcheck"
+            SUMMARY="pkgcheck scan --exit error failed for ${PKG} ${NEW_VER}"
+          elif [ "${{ steps.build_test.outcome }}" != "success" ]; then
+            STAGE="build-test"
+            SUMMARY="Gentoo stage3 build or smoke_test failed for ${PKG} ${NEW_VER}"
           else
-            REASON="Failed to create or auto-merge PR for ${PKG} ${NEW_VER}. Check workflow logs."
+            STAGE="pr-merge"
+            SUMMARY="Failed to create or auto-merge PR for ${PKG} ${NEW_VER}"
           fi
 
-          gh label create "autobump-failed" --color "d93f0b" --description "Automated package bump failed" 2>/dev/null || true
+          LOG_ARGS=()
+          [ -f /tmp/build-logs/console.log ] && LOG_ARGS+=(--log "console=/tmp/build-logs/console.log")
+          [ -f /tmp/build-logs/build.log ] && LOG_ARGS+=(--log "portage_build=/tmp/build-logs/build.log")
 
-          TITLE="[autobump-failed] ${PKG}: ${LOCAL_VER} -> ${NEW_VER}"
-          BODY="@locez Automated bump failed for \`${PKG}\`:
+          python3 .github/autobump/main.py collect-context \
+            --pkg "$PKG" \
+            --stage "$STAGE" \
+            --local-ver "$LOCAL_VER" \
+            --target-ver "$NEW_VER" \
+            --summary "$SUMMARY" \
+            --run-url "$RUN_URL" \
+            "${LOG_ARGS[@]}" \
+            --out /tmp/failure-context.json
 
-          - **Local version**: \`${LOCAL_VER}\`
-          - **Upstream version**: \`${NEW_VER}\`
-          - **Workflow run**: ${RUN_URL}
+          python3 .github/autobump/main.py notify \
+            --event failed \
+            --pkg "$PKG" \
+            --title "${LOCAL_VER} -> ${NEW_VER} (${STAGE} failed)" \
+            --detail "$SUMMARY" \
+            --run-url "$RUN_URL"
 
-          \`\`\`
-          ${REASON}
-          \`\`\`"
+          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
 
-          EXISTING=$(gh issue list --state open --label "autobump-failed" --search "[autobump-failed] ${PKG} in:title" --json number,title --jq '.[0]')
-          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
-            NUM=$(echo "$EXISTING" | jq -r '.number')
-            CUR_TITLE=$(echo "$EXISTING" | jq -r '.title')
-            if [ "$CUR_TITLE" != "$TITLE" ]; then
-              gh issue edit "$NUM" --title "$TITLE"
-              gh issue comment "$NUM" --body "$BODY"
-            else
-              echo "Failure issue #$NUM already tracks ${PKG} ${NEW_VER}, skipping duplicate comment."
-            fi
-          else
-            gh issue create --title "$TITLE" --label "autobump-failed" --body "$BODY"
+      - name: Upload FailureContext artifact
+        if: steps.on_fail.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-context-${{ matrix.slug }}
+          path: |
+            /tmp/failure-context.json
+            /tmp/build-logs
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Attempt pluggable AI repair (Draft PR only, never auto-merge)
+        id: ai_run
+        if: steps.on_fail.outcome == 'success'
+        continue-on-error: true
+        env:
+          AI_REPAIR_CMD: ${{ secrets.AI_REPAIR_CMD }}
+          AI_REPAIR_API_KEY: ${{ secrets.AI_REPAIR_API_KEY }}
+        run: |
+          if [ -z "${AI_REPAIR_CMD:-}" ]; then
+            echo "status=disabled" >> "$GITHUB_OUTPUT"
+            echo "AI_REPAIR_CMD secret not set; skipping automatic AI repair."
+            exit 0
           fi
+          python3 .github/autobump/main.py ai-repair \
+            --context /tmp/failure-context.json \
+            --result-file /tmp/ai-result.json || true
+          STATUS=$(jq -r '.status // "failed"' /tmp/ai-result.json)
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
 
-          exit 1
+      - name: Verify AI patch with pkgcheck
+        id: ai_pkgcheck
+        if: steps.ai_run.outputs.status == 'patched'
+        continue-on-error: true
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ matrix.pkg }}
+
+      - name: Verify AI patch in Gentoo stage3
+        id: ai_build
+        if: steps.ai_run.outputs.status == 'patched' && steps.ai_pkgcheck.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          log-dir: /tmp/ai-build-logs
+
+      - name: Open AI Draft PR & notify
+        if: steps.ai_run.outputs.status == 'patched' && steps.ai_pkgcheck.outcome == 'success' && steps.ai_build.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ matrix.pkg }}"
+          SLUG="${{ matrix.slug }}"
+          NEW_VER="${{ steps.bump.outputs.target_ver }}"
+          BASE=$(python3 .github/autobump/main.py config-info | jq -r '.overlay.base_branch')
+          BRANCH="ai-fix/${SLUG}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A "$PKG" licenses/ 2>/dev/null || git add -A "$PKG"
+          git commit -m "${PKG}: AI-assisted repair for ${NEW_VER}"
+          git push --force origin "$BRANCH"
+
+          PR_URL=$(gh pr create --draft --base "$BASE" --head "$BRANCH" \
+            --title "[AI Draft] ${PKG}: repair ${NEW_VER}" \
+            --body "AI-assisted repair candidate for \`${PKG}\` (\`${NEW_VER}\`).
+
+          - Guardrails verified (only package files modified)
+          - \`pkgcheck\` & Gentoo \`stage3\` build/smoke test passed
+          - **Manual review required** (AI PRs are never auto-merged)
+          - Workflow run: ${RUN_URL}")
+
+          python3 .github/autobump/main.py notify \
+            --event ai_draft_pr \
+            --pkg "$PKG" \
+            --title "AI Draft PR ready for ${NEW_VER}" \
+            --pr-url "$PR_URL" \
+            --run-url "$RUN_URL"
+
+      - name: Mark failed job
+        if: steps.on_fail.outcome == 'success'
+        run: exit 1

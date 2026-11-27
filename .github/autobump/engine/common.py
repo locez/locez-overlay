@@ -1,4 +1,4 @@
-"""Shared utilities: subprocess, HTTP, Manifest I/O, version sorting, ebuild & deb helpers."""
+"""Overlay-agnostic helpers: subprocess, HTTP, thin Manifest I/O, version/ebuild/deb utils."""
 
 from __future__ import annotations
 
@@ -12,18 +12,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-NVCHECKER_CONF = REPO_ROOT / ".github" / "workflows" / "nvchecker.toml"
-GH_REPO = os.environ.get("GITHUB_REPOSITORY", "locez/locez-overlay")
-USER_AGENT = "locez-overlay-autobump/1.0"
+USER_AGENT = "gentoo-overlay-autobump/2.0"
 
 
 class BumpError(Exception):
-    """Hard failure that should notify the maintainer."""
+    """Hard failure that should notify the maintainer or trigger AI repair."""
 
 
 class BumpSkip(Exception):
-    """Temporary/benign skip (e.g. already up-to-date or genpatches not ready yet)."""
+    """Benign skip (already up-to-date, or upstream dependency like genpatches not ready yet)."""
 
 
 def run(
@@ -46,7 +43,7 @@ def run(
     )
     if check and res.returncode != 0:
         detail = (res.stderr or res.stdout or "").strip()
-        raise BumpError(f"Command failed ({res.returncode}): {' '.join(cmd)}\n{detail[-1500:]}")
+        raise BumpError(f"Command failed ({res.returncode}): {' '.join(cmd)}\n{detail[-2000:]}")
     return res
 
 
@@ -157,8 +154,8 @@ def version_key(ver: str) -> tuple[Any, ...]:
     return (tuple(tokens), rev)
 
 
-def list_release_ebuilds(pkg: str) -> list[tuple[str, Path]]:
-    pdir = REPO_ROOT / pkg
+def list_release_ebuilds(repo_root: Path, pkg: str) -> list[tuple[str, Path]]:
+    pdir = repo_root / pkg
     pn = pkg.split("/", 1)[1]
     result: list[tuple[str, Path]] = []
     for eb in pdir.glob(f"{pn}-*.ebuild"):
@@ -170,13 +167,13 @@ def list_release_ebuilds(pkg: str) -> list[tuple[str, Path]]:
     return result
 
 
-def get_local_version(pkg: str) -> str | None:
-    ebuilds = list_release_ebuilds(pkg)
+def get_local_version(repo_root: Path, pkg: str, strategy: str = "") -> str | None:
+    ebuilds = list_release_ebuilds(repo_root, pkg)
     if not ebuilds:
         return None
     ver, eb = ebuilds[-1]
     base_ver = re.sub(r"-r[0-9]+$", "", ver)
-    if pkg == "sys-kernel/cachyos-sources":
+    if strategy == "kernel-cachyos":
         m = re.search(r'^CACHYOS_RELEASE="([^"]+)"', eb.read_text(encoding="utf-8"), re.M)
         rel = m.group(1) if m else "1"
         return f"{base_ver}-{rel}"

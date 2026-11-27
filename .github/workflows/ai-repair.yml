@@ -1,0 +1,138 @@
+name: AI Repair (Manual /ai-fix Trigger)
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to repair (e.g. app-emulation/dwproton-bin)"
+        required: true
+      target_ver:
+        description: "Target version (optional)"
+        required: false
+        default: ""
+      summary:
+        description: "Failure summary / hint for the AI agent"
+        required: false
+        default: "Manual /ai-fix request"
+
+jobs:
+  repair:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request == null &&
+       contains(github.event.comment.body, '/ai-fix') &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Parse target package & prepare FailureContext
+        id: prep
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PKG="${{ inputs.package }}"
+            TARGET="${{ inputs.target_ver }}"
+            SUMMARY="${{ inputs.summary }}"
+          else
+            TITLE="${{ github.event.issue.title }}"
+            PKG=$(echo "$TITLE" | sed -nE 's/^\[[^]]+\]\s+([a-z0-9_-]+\/[a-zA-Z0-9_+-]+).*/\1/p')
+            TARGET=""
+            SUMMARY="Triggered via /ai-fix on issue #${{ github.event.issue.number }}: ${TITLE}"
+          fi
+          if [ -z "$PKG" ]; then
+            echo "Could not determine package name from issue title" >&2
+            exit 1
+          fi
+          SLUG="${PKG//\//-}"
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+          python3 .github/autobump/main.py collect-context \
+            --pkg "$PKG" \
+            --stage "manual-ai-fix" \
+            --target-ver "${TARGET:-latest}" \
+            --summary "$SUMMARY" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --out /tmp/failure-context.json
+
+      - name: Run pluggable AI repair runner
+        id: repair
+        env:
+          AI_REPAIR_CMD: ${{ secrets.AI_REPAIR_CMD }}
+          AI_REPAIR_API_KEY: ${{ secrets.AI_REPAIR_API_KEY }}
+        run: |
+          python3 .github/autobump/main.py ai-repair \
+            --context /tmp/failure-context.json \
+            --result-file /tmp/ai-result.json
+          STATUS=$(jq -r '.status' /tmp/ai-result.json)
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Verify AI patch with pkgcheck
+        if: steps.repair.outputs.status == 'patched'
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ steps.prep.outputs.pkg }}
+
+      - name: Verify AI patch in Gentoo stage3
+        if: steps.repair.outputs.status == 'patched'
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ steps.prep.outputs.pkg }}
+          log-dir: /tmp/ai-build-logs
+
+      - name: Open Draft PR & notify
+        if: steps.repair.outputs.status == 'patched'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ steps.prep.outputs.pkg }}"
+          SLUG="${{ steps.prep.outputs.slug }}"
+          BASE=$(python3 .github/autobump/main.py config-info | jq -r '.overlay.base_branch')
+          BRANCH="ai-fix/${SLUG}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A "$PKG" licenses/ 2>/dev/null || git add -A "$PKG"
+          git commit -m "${PKG}: AI-assisted repair"
+          git push --force origin "$BRANCH"
+
+          PR_URL=$(gh pr create --draft --base "$BASE" --head "$BRANCH" \
+            --title "[AI Draft] ${PKG}: automated repair" \
+            --body "Triggered via \`/ai-fix\`.
+
+          - File-scope guardrails passed
+          - \`pkgcheck\` & Gentoo \`stage3\` build/smoke tests passed
+          - **Manual review required**
+          - Workflow run: ${RUN_URL}")
+
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            gh issue comment "${{ github.event.issue.number }}" --body "🤖 AI repair passed verification and opened Draft PR: ${PR_URL}"
+          fi
+
+          python3 .github/autobump/main.py notify \
+            --event ai_draft_pr \
+            --pkg "$PKG" \
+            --title "AI Draft PR ready" \
+            --pr-url "$PR_URL" \
+            --run-url "$RUN_URL"

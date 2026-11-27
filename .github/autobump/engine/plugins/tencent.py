@@ -1,14 +1,12 @@
-"""Handlers for Tencent Linux desktop apps (net-im/tencent-qq, net-im/wechat)."""
+"""Strategies for Tencent Linux desktop packages (tencent-qq, wechat)."""
 
 from __future__ import annotations
 
 import json
 import re
 import shutil
-from pathlib import Path
 
 from ..common import (
-    REPO_ROOT,
     BumpError,
     BumpSkip,
     dist_manifest_line,
@@ -22,6 +20,8 @@ from ..common import (
     version_key,
     write_manifest,
 )
+from ..schema import AutomationConfig, PackageSpec
+from .base import BumpContext
 
 WECHAT_X64_URL = "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb"
 WECHAT_ARM64_URL = "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb"
@@ -29,12 +29,12 @@ QQ_CONFIG_URL = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConf
 QQ_PROXY_PREFIX = "https://dlqq.akkariin.moe/"
 
 
-def bump_tencent_qq(pkg: str, new_ver: str, work: Path) -> str:
-    pdir = REPO_ROOT / pkg
-    ebuilds = list_release_ebuilds(pkg)
+def bump_tencent_qq(ctx: BumpContext) -> str:
+    pdir = ctx.pkg_dir
+    ebuilds = list_release_ebuilds(ctx.repo_root, ctx.spec.pkg)
     old_ver, old_eb = ebuilds[-1]
-    if re.sub(r"-r[0-9]+$", "", old_ver) == new_ver:
-        raise BumpSkip(f"{pkg} already at {new_ver}")
+    if re.sub(r"-r[0-9]+$", "", old_ver) == ctx.target_ver:
+        raise BumpSkip(f"{ctx.spec.pkg} already at {ctx.target_ver}")
 
     js = http_get_text(QQ_CONFIG_URL)
     m = re.search(r"var\s+params\s*=\s*(\{.*?\});", js, re.S)
@@ -48,16 +48,14 @@ def bump_tencent_qq(pkg: str, new_ver: str, work: Path) -> str:
     if not url_m:
         raise BumpError(f"Unexpected Tencent QQ amd64 URL format: {amd64_url}")
     base_url = url_m.group(1)
-    detected_pv = re.sub(r"_([0-9]+)$", r"_p\1", url_m.group(2))
-    if detected_pv != new_ver:
-        new_ver = detected_pv
+    new_ver = re.sub(r"_([0-9]+)$", r"_p\1", url_m.group(2))
 
-    amd64_dist = f"tencent-qq-{new_ver}_amd64.deb"
-    arm64_dist = f"tencent-qq-{new_ver}_arm64.deb"
-    amd64_dl = download_file(QQ_PROXY_PREFIX + amd64_url, work / amd64_dist)
-    arm64_dl = download_file(QQ_PROXY_PREFIX + arm64_url, work / arm64_dist)
+    amd64_dist = f"{ctx.spec.pn}-{new_ver}_amd64.deb"
+    arm64_dist = f"{ctx.spec.pn}-{new_ver}_arm64.deb"
+    amd64_dl = download_file(QQ_PROXY_PREFIX + amd64_url, ctx.work / amd64_dist)
+    arm64_dl = download_file(QQ_PROXY_PREFIX + arm64_url, ctx.work / arm64_dist)
 
-    deb_ver = extract_deb_control_field(amd64_dl, "Version", work)
+    deb_ver = extract_deb_control_field(amd64_dl, "Version", ctx.work)
     build_m = re.search(r"-([0-9]+)$", deb_ver)
     if not build_m:
         raise BumpError(f"Cannot extract BUILD number from QQ deb Version '{deb_ver}'")
@@ -74,7 +72,7 @@ def bump_tencent_qq(pkg: str, new_ver: str, work: Path) -> str:
     if f'BUILD="{new_build}"' not in eb_text_new or base_url not in eb_text_new:
         raise BumpError("Failed to update BUILD or qq_src_uri() in tencent-qq ebuild")
 
-    new_eb = pdir / f"tencent-qq-{new_ver}.ebuild"
+    new_eb = pdir / f"{ctx.spec.pn}-{new_ver}.ebuild"
     new_eb.write_text(eb_text_new, encoding="utf-8")
     for _, eb in ebuilds:
         if eb != new_eb:
@@ -90,14 +88,13 @@ def bump_tencent_qq(pkg: str, new_ver: str, work: Path) -> str:
     return new_ver
 
 
-def detect_wechat_update() -> tuple[str, str] | None:
-    """Return (local_ver, probe_tag) if WeChat Content-Length changed vs Manifest."""
-    pdir = REPO_ROOT / "net-im" / "wechat"
-    local_ver = get_local_version("net-im/wechat")
+def detect_wechat_update(cfg: AutomationConfig, spec: PackageSpec) -> tuple[str, str] | None:
+    pdir = cfg.repo_root / spec.pkg
+    local_ver = get_local_version(cfg.repo_root, spec.pkg, spec.strategy)
     if not local_ver:
         return None
     manifest = parse_manifest(pdir / "Manifest")
-    cur_dist = f"wechat-{local_ver}_x86_64.deb"
+    cur_dist = f"{spec.pn}-{local_ver}_x86_64.deb"
     cur_size = None
     if cur_dist in manifest:
         parts = manifest[cur_dist].split()
@@ -111,14 +108,14 @@ def detect_wechat_update() -> tuple[str, str] | None:
     return None
 
 
-def bump_wechat(pkg: str, _target: str, work: Path) -> str:
-    pdir = REPO_ROOT / pkg
-    ebuilds = list_release_ebuilds(pkg)
+def bump_wechat(ctx: BumpContext) -> str:
+    pdir = ctx.pkg_dir
+    ebuilds = list_release_ebuilds(ctx.repo_root, ctx.spec.pkg)
     old_ver, old_eb = ebuilds[-1]
     old_base = re.sub(r"-r[0-9]+$", "", old_ver)
 
-    x64_tmp = download_file(WECHAT_X64_URL, work / "WeChatLinux_x86_64.deb")
-    new_ver = extract_deb_control_field(x64_tmp, "Version", work)
+    x64_tmp = download_file(WECHAT_X64_URL, ctx.work / "WeChatLinux_x86_64.deb")
+    new_ver = extract_deb_control_field(x64_tmp, "Version", ctx.work)
     if new_ver == old_base:
         raise BumpError(
             f"WeChat upstream silent repack detected: Version is still {new_ver} "
@@ -127,15 +124,15 @@ def bump_wechat(pkg: str, _target: str, work: Path) -> str:
     if version_key(new_ver) <= version_key(old_base):
         raise BumpError(f"WeChat upstream version {new_ver} is not newer than local {old_base}")
 
-    arm64_tmp = download_file(WECHAT_ARM64_URL, work / "WeChatLinux_arm64.deb")
-    arm_ver = extract_deb_control_field(arm64_tmp, "Version", work)
+    arm64_tmp = download_file(WECHAT_ARM64_URL, ctx.work / "WeChatLinux_arm64.deb")
+    arm_ver = extract_deb_control_field(arm64_tmp, "Version", ctx.work)
     if arm_ver != new_ver:
         raise BumpError(f"WeChat arch version mismatch: x86_64={new_ver}, arm64={arm_ver}")
 
-    x64_dist = f"wechat-{new_ver}_x86_64.deb"
-    arm64_dist = f"wechat-{new_ver}_arm64.deb"
+    x64_dist = f"{ctx.spec.pn}-{new_ver}_x86_64.deb"
+    arm64_dist = f"{ctx.spec.pn}-{new_ver}_arm64.deb"
 
-    new_eb = pdir / f"wechat-{new_ver}.ebuild"
+    new_eb = pdir / f"{ctx.spec.pn}-{new_ver}.ebuild"
     shutil.copy2(old_eb, new_eb)
     for _, eb in ebuilds:
         if eb != new_eb:

@@ -1,0 +1,186 @@
+# Declarative automation configuration for this Gentoo overlay.
+# Everything in .github/autobump/engine/ is overlay-agnostic and driven by this file.
+
+[overlay]
+name = "locez"
+repository = "locez/locez-overlay"
+base_branch = "master"
+maintainer = "locez"
+
+[build]
+# Gentoo container image + official binhost for fast dependency installs
+stage3_image = "docker.io/gentoo/stage3:latest"
+use_binhost = true
+binhost_uri = "https://distfiles.gentoo.org/releases/amd64/binpackages/23.0/x86-64/"
+
+[notify]
+github_issue = true
+github_label = "autobump-failed"
+# Telegram activates automatically when TELEGRAM_BOT_TOKEN & TELEGRAM_CHAT_ID secrets are set.
+telegram = true
+# Which event types push to Telegram: "failed", "ai_draft_pr", "zfs_unlocked", "health_alert", "merged"
+telegram_events = ["failed", "ai_draft_pr", "zfs_unlocked", "health_alert"]
+
+[ai_repair]
+# Set enabled = true (or pass AI_REPAIR_CMD secret in CI) once your agent CLI (e.g. merry) is ready.
+enabled = false
+mode = "draft-pr"
+max_attempts = 1
+allowed_extra_paths = ["licenses/"]
+# Command template receives: {context_file}, {pkg}, {repo_root}
+# Override via repository secret AI_REPAIR_CMD if needed.
+command = ""
+
+# =============================================================================
+# Package Specifications
+# =============================================================================
+
+[packages."app-emulation/dwproton-bin"]
+detect = { type = "nvchecker", source = "gitea", gitea = "dawn-winery/dwproton", host = "dawn.wine", use_latest_release = true, prefix = "dwproton-", from_pattern = "-([0-9]+)$", to_pattern = "_p\\1" }
+strategy = "dwproton"
+retention = { type = "keep-latest", count = 3 }
+policy = "auto-merge"
+build = { mode = "emerge-bin", use = ["abi_x86_32"] }
+
+[packages."app-emulation/proton-ge-bin"]
+detect = { type = "nvchecker", source = "github", github = "GloriousEggroll/proton-ge-custom", use_latest_release = true, prefix = "GE-Proton", from_pattern = "^([0-9]+)-([0-9]+)$", to_pattern = "\\1.\\2" }
+strategy = "proton-ge"
+retention = { type = "keep-latest", count = 3 }
+policy = "auto-merge"
+build = { mode = "emerge-bin", use = ["abi_x86_32"] }
+
+[packages."dev-python/pure-protobuf"]
+detect = { type = "nvchecker", source = "pypi", pypi = "pure-protobuf" }
+strategy = "pypi"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = true }
+smoke_test = "python3 -c 'from pure_protobuf.annotations import Field; from pure_protobuf.message import BaseMessage'"
+
+[packages."dev-python/qasync"]
+detect = { type = "nvchecker", source = "pypi", pypi = "qasync" }
+strategy = "pypi"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = false }
+smoke_test = "python3 -c 'import qasync'"
+
+[packages."media-libs/libdicom"]
+detect = { type = "nvchecker", source = "github", github = "ImagingDataCommons/libdicom", use_latest_release = true, prefix = "v" }
+strategy = "github-release"
+url_template = "https://github.com/ImagingDataCommons/libdicom/releases/download/v{ver}/libdicom-{ver}.tar.xz"
+dist_template = "libdicom-{ver}.tar.xz"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = true }
+smoke_test = "pkg-config --exists libdicom && pkg-config --libs libdicom"
+
+[packages."media-libs/openslide"]
+detect = { type = "nvchecker", source = "github", github = "openslide/openslide", use_latest_release = true, prefix = "v" }
+strategy = "github-release"
+url_template = "https://github.com/openslide/openslide/releases/download/v{ver}/openslide-{ver}.tar.xz"
+dist_template = "openslide-{ver}.tar.xz"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = false }
+smoke_test = "pkg-config --exists openslide && pkg-config --libs openslide"
+
+[packages."media-plugins/kotonoha"]
+detect = { type = "nvchecker", source = "github", github = "locez/kotonoha", use_max_tag = true, prefix = "v" }
+strategy = "github-release"
+url_template = "https://github.com/locez/kotonoha/archive/refs/tags/v{ver}.tar.gz"
+dist_template = "kotonoha-{ver}.tar.gz"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = true }
+smoke_test = "python3 -c 'import kotonoha' && test -f /usr/share/applications/kotonoha.desktop"
+weekly_live_test = true
+
+[packages."media-sound/cider"]
+detect = { type = "nvchecker", source = "regex", url = "https://repo.cider.sh/apt/pool/main/", regex = 'cider-v([0-9]+(?:\.[0-9]+)+)-linux-x64\.deb' }
+strategy = "cider"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+smoke_test = "test -x /opt/cider/Cider && test -L /usr/bin/cider && test -f /usr/share/applications/cider.desktop"
+
+[packages."net-im/tencent-qq"]
+detect = { type = "nvchecker", source = "regex", url = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js", regex = 'QQ_([0-9]+(?:\.[0-9]+)+_[0-9]+)_amd64_01\.deb', from_pattern = "_([0-9]+)$", to_pattern = "_p\\1" }
+strategy = "tencent-qq"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin", use = ["bwrap", "system-fdk-aac", "system-libssh2", "system-openh264", "system-zlib"] }
+smoke_test = "test -x /usr/bin/qq && test -x /opt/QQ/qq && test -f /usr/share/applications/qq.desktop"
+
+[packages."net-im/wechat"]
+detect = { type = "wechat-head" }
+strategy = "wechat"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin", use = ["bwrap"] }
+smoke_test = "test -x /usr/bin/wechat && test -x /opt/wechat/wechat && test -f /usr/share/applications/wechat.desktop"
+
+[packages."net-misc/tsshd"]
+detect = { type = "nvchecker", source = "github", github = "trzsz/tsshd", use_latest_release = true, prefix = "v" }
+strategy = "go-vendor"
+go_build_target = "./cmd/tsshd"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = true }
+smoke_test = "tsshd -v"
+
+[packages."sys-kernel/xanmod-sources"]
+detect = { type = "nvchecker", source = "gitlab", gitlab = "xanmod/linux", use_max_tag = true, include_regex = "[0-9]+\\.[0-9]+\\.[0-9]+-xanmod[0-9]+", from_pattern = "-xanmod[0-9]+$", to_pattern = "" }
+strategy = "kernel-xanmod"
+retention = { type = "replace", guard = "keep-last-zfs-compatible" }
+policy = "auto-merge"
+build = { mode = "kernel-sources", use_sets = [["-zfs"]], check_kconfig = true }
+smoke_test = "test -f /usr/src/linux-*-xanmod*/Makefile"
+
+[packages."sys-kernel/cachyos-sources"]
+detect = { type = "nvchecker", source = "github", github = "CachyOS/linux", use_max_tag = true, include_regex = "cachyos-[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+", from_pattern = "^cachyos-", to_pattern = "" }
+strategy = "kernel-cachyos"
+retention = { type = "replace", guard = "keep-last-zfs-compatible" }
+policy = "auto-merge"
+build = { mode = "kernel-sources", use_sets = [["bore", "rt", "thin", "-zfs"], ["-bore", "prjc", "-zfs"]], check_kconfig = true }
+smoke_test = "test -f /usr/src/linux-*-cachyos*/Makefile"
+
+[packages."x11-misc/flatpak-xdg-utils"]
+detect = { type = "nvchecker", source = "github", github = "flatpak/flatpak-xdg-utils", use_latest_release = true }
+strategy = "github-release"
+url_template = "https://github.com/flatpak/flatpak-xdg-utils/releases/download/{ver}/flatpak-xdg-utils-{ver}.tar.xz"
+dist_template = "flatpak-xdg-utils-{ver}.tar.xz"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = false }
+smoke_test = "test -x /usr/bin/flatpak-spawn && test -x /usr/lib/flatpak-xdg-utils/xdg-open"
+
+# =============================================================================
+# Non-autobumped packages (still participate in PR build-test & weekly health)
+# =============================================================================
+
+[packages."app-i18n/rime-ice"]
+detect = { type = "none" }
+build = { mode = "emerge-full", use = ["base", "english", "opencc", "tencent", "lua"], test = false }
+smoke_test = "test -f /usr/share/rime-data/rime_ice.schema.yaml"
+weekly_live_test = true
+
+[packages."app-misc/bilihud"]
+detect = { type = "none" }
+build = { mode = "emerge-full", test = true }
+smoke_test = "python3 -c 'import bilihud' && test -f /usr/share/applications/bilihud.desktop"
+weekly_live_test = true
+
+[packages."media-sound/qqmusic"]
+detect = { type = "none" }
+build = { mode = "emerge-bin" }
+smoke_test = "test -x /usr/bin/qqmusic && test -x /opt/qqmusic/qqmusic"
+
+[packages."games-action/minecraft-launcher"]
+detect = { type = "none" }
+build = { mode = "emerge-bin", use = ["bwrap"] }
+smoke_test = "test -x /opt/minecraft-launcher/minecraft-launcher && test -x /opt/minecraft-launcher/minecraft-launcher-wrapper"
+
+[packages."virtual/linux-sources"]
+detect = { type = "none" }
+build = { mode = "dep-resolve" }

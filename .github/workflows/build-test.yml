@@ -1,0 +1,95 @@
+name: Gentoo Build & Integration Test
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths-ignore:
+      - "README.md"
+      - "**.md"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to build & smoke-test (e.g. dev-python/pure-protobuf)"
+        required: true
+      live:
+        description: "Test 9999 live ebuild"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      packages_json:
+        description: 'JSON array of {"pkg":"cat/pn","slug":"cat-pn"}'
+        required: true
+        type: string
+      live:
+        description: "Test 9999 live ebuilds"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_packages: ${{ steps.plan.outputs.has_packages }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine packages to build-test
+        id: plan
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            PKGS='${{ inputs.packages_json }}'
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PKG="${{ inputs.package }}"
+            SLUG="${PKG//\//-}"
+            PKGS="[{\"pkg\":\"${PKG}\",\"slug\":\"${SLUG}\"}]"
+          else
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            PKGS=$(python3 .github/autobump/main.py changed-packages --base "origin/${{ github.base_ref }}")
+          fi
+          COMPACT=$(echo "$PKGS" | jq -c '.')
+          COUNT=$(echo "$COMPACT" | jq 'length')
+          echo "matrix=$COMPACT" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_packages=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_packages=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-test:
+    needs: plan
+    if: needs.plan.outputs.has_packages == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pkgcheck on package
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ matrix.pkg }}
+
+      - name: Build & smoke-test in Gentoo stage3
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          live: ${{ inputs.live }}
+          log-dir: /tmp/build-logs
+
+      - name: Upload Portage build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.slug }}
+          path: /tmp/build-logs
+          if-no-files-found: ignore
+          retention-days: 7

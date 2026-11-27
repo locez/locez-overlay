@@ -1,0 +1,69 @@
+name: "Gentoo Stage3 Build & Smoke Test"
+description: "Render and execute a Gentoo stage3 + official binhost emerge & smoke_test for a single overlay package"
+
+inputs:
+  package:
+    description: "Package atom (category/name)"
+    required: true
+  live:
+    description: "Build 9999 live ebuild"
+    required: false
+    default: "false"
+  log-dir:
+    description: "Host directory where build logs and console.log are written"
+    required: false
+    default: "/tmp/build-logs"
+  free-disk:
+    description: "Free extra runner disk space before starting container (useful for kernels/Proton)"
+    required: false
+    default: "auto"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Free runner disk space for large builds
+      shell: bash
+      run: |
+        SHOULD_FREE="${{ inputs.free-disk }}"
+        if [ "$SHOULD_FREE" = "auto" ]; then
+          case "${{ inputs.package }}" in
+            sys-kernel/*|app-emulation/*) SHOULD_FREE="true" ;;
+            *) SHOULD_FREE="false" ;;
+          esac
+        fi
+        if [ "$SHOULD_FREE" = "true" ]; then
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          df -h /
+        fi
+
+    - name: Render and run Gentoo stage3 build & smoke test
+      shell: bash
+      run: |
+        set -euo pipefail
+        LOG_DIR="${{ inputs.log-dir }}"
+        mkdir -p "$LOG_DIR"
+
+        LIVE_FLAG=""
+        if [ "${{ inputs.live }}" = "true" ]; then
+          LIVE_FLAG="--live"
+        fi
+
+        SCRIPT_PATH="$(mktemp /tmp/gentoo-build-test.XXXXXX.sh)"
+        trap 'rm -f "$SCRIPT_PATH"' EXIT
+
+        python3 .github/autobump/main.py render-build-script \
+          --pkg "${{ inputs.package }}" \
+          $LIVE_FLAG \
+          --overlay-mount /overlay \
+          --log-dir /build-logs \
+          --out "$SCRIPT_PATH"
+
+        IMAGE="$(python3 .github/autobump/main.py config-info | jq -r '.build.stage3_image')"
+
+        docker run --rm \
+          -v "${{ github.workspace }}:/overlay:ro" \
+          -v "${SCRIPT_PATH}:/run-build-test.sh:ro" \
+          -v "${LOG_DIR}:/build-logs" \
+          "$IMAGE" \
+          bash /run-build-test.sh 2>&1 | tee "${LOG_DIR}/console.log"
+        exit "${PIPESTATUS[0]}"

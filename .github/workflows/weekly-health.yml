@@ -1,0 +1,68 @@
+name: Weekly Overlay Health Check
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Every Monday at 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  plan-live:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.live.outputs.matrix }}
+      has_live: ${{ steps.live.outputs.has_live }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List 9999 live packages from metadata/autobump.toml
+        id: live
+        run: |
+          PKGS=$(python3 .github/autobump/main.py live-packages | jq -c '.')
+          COUNT=$(echo "$PKGS" | jq 'length')
+          echo "matrix=$PKGS" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_live=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_live=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  live-build-test:
+    needs: plan-live
+    if: needs.plan-live.outputs.has_live == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan-live.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & smoke-test 9999 live ebuild in Gentoo stage3
+        id: test
+        continue-on-error: true
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          live: "true"
+          log-dir: /tmp/live-logs
+
+      - name: Notify on 9999 live build regression
+        if: steps.test.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          TAIL=$(tail -n 60 /tmp/live-logs/console.log 2>/dev/null || echo "Live build failed")
+          python3 .github/autobump/main.py notify \
+            --event health_alert \
+            --pkg "${{ matrix.pkg }}" \
+            --title "9999 live ebuild build/test failed" \
+            --detail "$TAIL" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          exit 1
