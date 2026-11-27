@@ -65,12 +65,20 @@ jobs:
           fi
           COMPACT=$(echo "$PKGS" | jq -c '.')
           COUNT=$(echo "$COMPACT" | jq 'length')
+          PKG_ARGS=$(echo "$COMPACT" | jq -r '.[].pkg' | tr '\n' ' ')
           echo "matrix=$COMPACT" >> "$GITHUB_OUTPUT"
+          echo "pkg_args=$PKG_ARGS" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
             echo "has_packages=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_packages=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Run pkgcheck on target packages
+        if: steps.plan.outputs.has_packages == 'true'
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ steps.plan.outputs.pkg_args }}
 
   build-test:
     needs: plan
@@ -84,12 +92,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-
-      - name: Run pkgcheck on package
-        if: runner.arch == 'X64'
-        uses: pkgcore/pkgcheck-action@v1
-        with:
-          args: --exit error ${{ matrix.pkg }}
 
       - name: Build & smoke-test in Gentoo stage3
         uses: ./.github/actions/gentoo-build-test
