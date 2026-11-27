@@ -1,17 +1,26 @@
-## Note: 
-I come back to Gentoo!!
-
 # locez-overlay
 
+> I come back to Gentoo!!
 
-`cat /etc/portage/repos.conf/locez.conf` 
+## Usage
 
+Via `eselect repository`:
 
-``` shell
-[locez]
-location = /var/db/repos/locez/
-sync-type = git
-sync-uri = https://github.com/locez/locez-overlay.git
-
+```bash
+eselect repository add locez git https://github.com/locez/locez-overlay.git
+emaint sync -r locez
 ```
 
+Or `/etc/portage/repos.conf/locez.conf`:
+
+```ini
+[locez]
+location = /var/db/repos/locez
+sync-type = git
+sync-uri = https://github.com/locez/locez-overlay.git
+auto-sync = yes
+```
+
+```bash
+emaint sync -r locez
+```
