@@ -1,0 +1,255 @@
+name: Build & Populate PR Distfiles Deps (/build-deps)
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull Request number containing Go/Rust ebuilds with __DEPS_TARBALL_URI__ placeholder"
+        required: true
+        type: string
+
+jobs:
+  resolve:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '/build-deps') &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    outputs:
+      pr_number: ${{ steps.pr.outputs.number }}
+      head_ref: ${{ steps.pr.outputs.head_ref }}
+      base_ref: ${{ steps.pr.outputs.base_ref }}
+      head_repo: ${{ steps.pr.outputs.head_repo }}
+      pkgs: ${{ steps.resolve.outputs.pkgs }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      count: ${{ steps.resolve.outputs.count }}
+
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUM="${{ inputs.pr_number }}"
+          else
+            PR_NUM="${{ github.event.issue.number }}"
+          fi
+          gh pr view "$PR_NUM" -R "${{ github.repository }}" \
+            --json headRefName,baseRefName,headRepositoryOwner,headRepository > /tmp/pr.json
+          echo "number=$PR_NUM" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$(jq -r '.headRefName' /tmp/pr.json)" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$(jq -r '.baseRefName' /tmp/pr.json)" >> "$GITHUB_OUTPUT"
+          echo "head_repo=$(jq -r '"\(.headRepositoryOwner.login)/\(.headRepository.name)"' /tmp/pr.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch base branch & pin trusted automation engine
+        run: |
+          git remote add upstream "https://github.com/${{ github.repository }}.git" 2>/dev/null || true
+          git fetch upstream "${{ steps.pr.outputs.base_ref }}"
+          # Always run automation engine from the trusted base branch when DISTFILES_TOKEN is in scope
+          git checkout "upstream/${{ steps.pr.outputs.base_ref }}" -- .github/autobump
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Ensure Rust toolchain is available
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Resolve __DEPS_TARBALL_URI__ placeholders & upload missing deps tarballs
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISTFILES_TOKEN: ${{ secrets.DISTFILES_TOKEN }}
+        run: |
+          python3 .github/autobump/main.py resolve-deps \
+            --base "upstream/${{ steps.pr.outputs.base_ref }}" \
+            --result-file /tmp/deps-result.json
+
+          PKGS=$(jq -r '[.resolved[].pkg] | join(" ")' /tmp/deps-result.json)
+          MATRIX=$(jq -c '[.resolved[] | {pkg: .pkg, slug: (.pkg | gsub("/"; "-"))}]' /tmp/deps-result.json)
+          COUNT=$(jq '.resolved | length' /tmp/deps-result.json)
+          echo "pkgs=$PKGS" >> "$GITHUB_OUTPUT"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          # Capture clean patch touching ONLY the resolved package directories
+          mkdir -p /tmp/deps-artifact
+          cp /tmp/deps-result.json /tmp/deps-artifact/deps-result.json
+          if [ "$COUNT" -gt 0 ]; then
+            for pkg in $PKGS; do
+              # Track newly created Manifest files in the diff patch
+              if [ -f "${pkg}/Manifest" ] && ! git ls-files --error-unmatch "${pkg}/Manifest" >/dev/null 2>&1; then
+                git add -N "${pkg}/Manifest"
+              fi
+            done
+            git diff -- $PKGS > /tmp/deps-artifact/deps.patch
+          fi
+
+      - name: Upload resolved deps patch artifact
+        if: steps.resolve.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-deps-patch
+          path: /tmp/deps-artifact
+          retention-days: 1
+
+      - name: Report if no placeholder packages found
+        if: steps.resolve.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ steps.pr.outputs.number }}" -R "${{ github.repository }}" \
+            --body "ℹ️ \`/build-deps\` found no Go/Rust packages with \`__DEPS_TARBALL_URI__\` placeholder or missing \`-deps.tar.xz\` Manifest entries in this PR."
+
+  verify:
+    needs: resolve
+    if: needs.resolve.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.resolve.outputs.matrix) }}
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.resolve.outputs.head_repo }}
+          ref: ${{ needs.resolve.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pin trusted automation engine & build-test action from base
+        run: |
+          git remote add upstream "https://github.com/${{ github.repository }}.git" 2>/dev/null || true
+          git fetch upstream "${{ needs.resolve.outputs.base_ref }}"
+          git checkout "upstream/${{ needs.resolve.outputs.base_ref }}" -- .github/autobump .github/actions
+
+      - name: Download & apply resolved deps patch
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-deps-patch
+          path: /tmp/deps-artifact
+
+      - name: Apply deps patch
+        run: |
+          if [ -s /tmp/deps-artifact/deps.patch ]; then
+            git apply /tmp/deps-artifact/deps.patch
+          fi
+
+      - name: Verify updated package with pkgcheck
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ matrix.pkg }}
+
+      - name: Verify updated package in Gentoo stage3
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          log-dir: /tmp/deps-build-logs
+
+  publish:
+    needs: [resolve, verify]
+    if: needs.resolve.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.resolve.outputs.head_repo }}
+          ref: ${{ needs.resolve.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download resolved deps patch
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-deps-patch
+          path: /tmp/deps-artifact
+
+      - name: Commit & push verified ebuild + Manifest back to PR branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR_NUM="${{ needs.resolve.outputs.pr_number }}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SUMMARY=$(jq -r '.resolved[] | "- `\(.pkg)-\(.ver)` (\(.kind)): `\(.action)` → \(.download_url)"' /tmp/deps-artifact/deps-result.json)
+
+          if [ -s /tmp/deps-artifact/deps.patch ]; then
+            git apply /tmp/deps-artifact/deps.patch
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for pkg in ${{ needs.resolve.outputs.pkgs }}; do
+            git add "$pkg"
+          done
+
+          if git diff --cached --quiet; then
+            gh pr comment "$PR_NUM" -R "${{ github.repository }}" --body "✅ \`/build-deps\` completed (no ebuild/Manifest diff needed).
+
+          ${SUMMARY}
+
+          - \`pkgcheck\` & Gentoo \`stage3\` build/smoke tests passed
+          - Workflow run: ${RUN_URL}"
+            exit 0
+          fi
+
+          git commit -m "chore(deps): populate distfiles deps tarball & Manifest"
+          if git push origin "HEAD:${{ needs.resolve.outputs.head_ref }}"; then
+            gh pr comment "$PR_NUM" -R "${{ github.repository }}" --body "✅ \`/build-deps\` succeeded and updated this PR branch!
+
+          ${SUMMARY}
+
+          - Placeholder \`__DEPS_TARBALL_URI__\` replaced & \`Manifest\` updated
+          - \`pkgcheck\` & Gentoo \`stage3\` build/smoke tests passed
+          - Workflow run: ${RUN_URL}"
+          else
+            PATCH=$(git show --format= HEAD)
+            gh pr comment "$PR_NUM" -R "${{ github.repository }}" --body "✅ \`/build-deps\` built & verified the deps tarballs, but could not push directly to the fork PR branch (maintainer edits may be disabled).
+
+          ${SUMMARY}
+
+          Apply this patch to your PR branch:
+          \`\`\`diff
+          ${PATCH}
+          \`\`\`
+
+          - Workflow run: ${RUN_URL}"
+          fi

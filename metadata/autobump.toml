@@ -4,6 +4,7 @@
 [overlay]
 name = "locez"
 repository = "locez/locez-overlay"
+distfiles_repo = "locez/locez-overlay-distfiles"
 base_branch = "master"
 maintainer = "locez"
 

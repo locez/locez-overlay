@@ -114,12 +114,24 @@ jobs:
         with:
           go-version: "stable"
 
+      - name: Set up Rust / pycargoebuild (for rust strategies)
+        if: matrix.strategy == 'rust-vendor' || matrix.strategy == 'rust-crates'
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+          if [ "${{ matrix.strategy }}" = "rust-crates" ]; then
+            pip install --quiet pycargoebuild
+          fi
+
       - name: Bump ebuild & Manifest
         id: bump
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISTFILES_TOKEN: ${{ secrets.DISTFILES_TOKEN }}
         run: |
           python3 .github/autobump/main.py bump \
             --pkg "${{ matrix.pkg }}" \

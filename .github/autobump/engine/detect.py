@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,11 @@ def detect_updates(cfg: AutomationConfig, *, only_pkg: str | None = None) -> dic
             nv_cmd = ["nvchecker", "-c", str(conf_path)]
             if only_pkg:
                 nv_cmd.extend(["-e", only_pkg])
-            res = run(nv_cmd, check=False)
+            nv_env = dict(os.environ)
+            gh_tok = nv_env.get("NVCHECKER_GITHUB_TOKEN") or nv_env.get("GITHUB_TOKEN") or nv_env.get("GH_TOKEN")
+            if gh_tok:
+                nv_env["NVCHECKER_GITHUB_TOKEN"] = gh_tok
+            res = run(nv_cmd, env=nv_env, check=False)
             new_file = tdir / "new.json"
             if not new_file.exists():
                 raise BumpError(f"nvchecker failed to produce output:\n{res.stderr or res.stdout}")

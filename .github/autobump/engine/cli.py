@@ -12,6 +12,7 @@ from typing import Any
 from .builder import render_container_test_script, resolve_target_atom
 from .common import get_local_version
 from .context import collect_failure_context
+from .deps import build_deps_for_package, resolve_packages_deps
 from .detect import detect_updates
 from .notify import close_github_failure_issue, notify_event
 from .plugins import bump_package
@@ -115,10 +116,10 @@ def _cmd_python_compat_sync(cfg: AutomationConfig, args: argparse.Namespace) -> 
     return 0
 
 
-def _cmd_changed_packages(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+def _git_changed_packages(repo_root: Path, base: str, *, only_configured: set[str] | None = None) -> list[str]:
     res = subprocess.run(
-        ["git", "diff", "--name-only", f"{args.base}...HEAD"],
-        cwd=str(cfg.repo_root),
+        ["git", "diff", "--name-only", f"{base}...HEAD"],
+        cwd=str(repo_root),
         text=True,
         capture_output=True,
         check=True,
@@ -126,11 +127,20 @@ def _cmd_changed_packages(cfg: AutomationConfig, args: argparse.Namespace) -> in
     found: set[str] = set()
     for line in res.stdout.splitlines():
         parts = line.strip().split("/")
-        if len(parts) >= 3:
-            candidate = f"{parts[0]}/{parts[1]}"
-            if candidate in cfg.packages:
+        if len(parts) < 3:
+            continue
+        candidate = f"{parts[0]}/{parts[1]}"
+        if only_configured is not None:
+            if candidate in only_configured:
                 found.add(candidate)
-    _emit([{"pkg": p, "slug": cfg.packages[p].slug} for p in sorted(found)])
+        elif (repo_root / parts[0] / parts[1]).is_dir():
+            found.add(candidate)
+    return sorted(found)
+
+
+def _cmd_changed_packages(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    pkgs = _git_changed_packages(cfg.repo_root, args.base, only_configured=set(cfg.packages))
+    _emit([{"pkg": p, "slug": cfg.packages[p].slug} for p in pkgs])
     return 0
 
 
@@ -182,6 +192,29 @@ def _cmd_ai_repair(cfg: AutomationConfig, args: argparse.Namespace) -> int:
     res = run_ai_repair(cfg, Path(args.context), command_override=args.command)
     _emit(res, args.result_file)
     return 0 if res["status"] in ("patched", "disabled", "no_changes") else 1
+
+
+def _cmd_build_deps(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    res = build_deps_for_package(
+        cfg,
+        pkg=args.pkg,
+        ver=args.ver,
+        kind=args.type,
+        src_url=args.src_url,
+        out_dir=Path(args.out_dir),
+        upload=args.upload,
+        go_build_target=args.go_build_target,
+        cargo_manifest_dir=args.cargo_manifest_dir,
+    )
+    _emit(res, args.result_file)
+    return 0
+
+
+def _cmd_resolve_deps(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    pkgs = list(args.pkgs or []) or _git_changed_packages(cfg.repo_root, args.base)
+    res = resolve_packages_deps(cfg, pkgs, upload=not args.no_upload)
+    _emit(res, args.result_file)
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -263,6 +296,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--command", default="", help="Optional command template override")
     p.add_argument("--result-file")
     p.set_defaults(func=_cmd_ai_repair)
+
+    p = sub.add_parser("build-deps", help="Build (and optionally upload) Go/Rust ${P}-deps.tar.xz to distfiles_repo")
+    p.add_argument("--pkg", required=True, help="Package atom (category/name)")
+    p.add_argument("--ver", required=True, help="Package version (e.g. 0.1.10)")
+    p.add_argument("--type", required=True, choices=["go", "rust"], help="Ecosystem dependency type")
+    p.add_argument("--src-url", required=True, help="Upstream source tarball URL")
+    p.add_argument("--out-dir", default="/tmp/distfiles-deps", help="Output directory for ${P}-deps.tar.xz")
+    p.add_argument("--go-build-target", default=".", help="Go package target for sanity build check")
+    p.add_argument("--cargo-manifest-dir", default="", help="Subdirectory containing Cargo.toml if not repo root")
+    p.add_argument("--upload", action="store_true", help="Upload tarball to overlay.distfiles_repo GitHub Release")
+    p.add_argument("--result-file")
+    p.set_defaults(func=_cmd_build_deps)
+
+    p = sub.add_parser("resolve-deps", help="Resolve __DEPS_TARBALL_URI__ placeholders & upload missing Go/Rust deps for PR packages")
+    p.add_argument("--base", default="origin/master", help="Git base ref to detect changed packages when --pkgs is omitted")
+    p.add_argument("--pkgs", nargs="*", help="Explicit list of category/name packages to resolve")
+    p.add_argument("--no-upload", action="store_true", help="Build locally without uploading to distfiles_repo")
+    p.add_argument("--result-file")
+    p.set_defaults(func=_cmd_resolve_deps)
 
     return parser
 

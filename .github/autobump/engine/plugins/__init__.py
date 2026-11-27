@@ -13,6 +13,7 @@ from .base import BumpContext, Strategy
 from .go_vendor import bump_go_vendor
 from .kernel import bump_cachyos, bump_xanmod
 from .proton import bump_dwproton, bump_proton_ge
+from .rust import bump_rust_crates, bump_rust_vendor
 from .simple import bump_cider, bump_github_release, bump_pypi
 from .tencent import bump_tencent_qq, bump_wechat
 
@@ -27,6 +28,8 @@ STRATEGIES: dict[str, Strategy] = {
     "tencent-qq": bump_tencent_qq,
     "wechat": bump_wechat,
     "go-vendor": bump_go_vendor,
+    "rust-vendor": bump_rust_vendor,
+    "rust-crates": bump_rust_crates,
     "kernel-xanmod": bump_xanmod,
     "kernel-cachyos": bump_cachyos,
 }

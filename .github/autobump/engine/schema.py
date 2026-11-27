@@ -31,6 +31,11 @@ class OverlayConfig:
     repository: str
     base_branch: str
     maintainer: str
+    distfiles_repo: str = ""
+
+    @property
+    def effective_distfiles_repo(self) -> str:
+        return self.distfiles_repo or self.repository
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,7 @@ class PackageSpec:
     url_template: str = ""
     dist_template: str = ""
     go_build_target: str = ""
+    cargo_manifest_dir: str = ""
     weekly_live_test: bool = False
 
     @property
@@ -186,6 +192,7 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
         repository=ov.get("repository", ""),
         base_branch=ov.get("base_branch", "master"),
         maintainer=ov.get("maintainer", ""),
+        distfiles_repo=ov.get("distfiles_repo", ""),
     )
 
     bd = raw.get("build", {})
@@ -271,6 +278,7 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
             url_template=pdata.get("url_template", ""),
             dist_template=pdata.get("dist_template", ""),
             go_build_target=pdata.get("go_build_target", ""),
+            cargo_manifest_dir=pdata.get("cargo_manifest_dir", ""),
             weekly_live_test=bool(pdata.get("weekly_live_test", False)),
         )
 

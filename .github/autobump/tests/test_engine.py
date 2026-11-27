@@ -19,9 +19,23 @@ if str(AUTOBUMP_DIR) not in sys.path:
 from engine.builder import render_container_test_script, resolve_target_atom
 from engine.common import get_local_version, version_key
 from engine.context import _select_latest_ebuild
+from engine.deps import (
+    DEPS_PLACEHOLDER,
+    _expand_ebuild_vars,
+    deps_download_url,
+    deps_ebuild_uri_template,
+    deps_release_tag,
+    deps_tarball_name,
+    detect_deps_kind,
+    ebuild_needs_deps_resolution,
+    extract_rust_git_sources,
+    parse_primary_src_uri,
+    rewrite_ebuild_deps_metadata,
+)
 from engine.notify import format_telegram_event
 from engine.plugins import STRATEGIES
 from engine.plugins.kernel import _extract_filesdir_patches
+from engine.plugins.rust import parse_crates_from_ebuild
 from engine.python_compat import (
     compute_target_compat,
     format_python_compat,
@@ -66,7 +80,9 @@ class TestSchemaAndConfig(unittest.TestCase):
             )
             data = tomllib.loads(out.read_text(encoding="utf-8"))
             tracked = [k for k in data if k != "__config__"]
-            self.assertEqual(len(tracked), 13)
+            expected = sum(1 for spec in self.cfg.packages.values() if spec.detect.get("type") == "nvchecker")
+            self.assertEqual(len(tracked), expected)
+            self.assertGreater(expected, 0)
             self.assertIn("media-sound/cider", tracked)
             self.assertIn("net-im/tencent-qq", tracked)
 
@@ -199,7 +215,9 @@ class TestGuardrailsContextAndNotify(unittest.TestCase):
                 env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
             )
         )
-        self.assertEqual([x["pkg"] for x in live], ["app-i18n/rime-ice", "app-misc/bilihud", "media-plugins/kotonoha"])
+        cfg = load_config(REPO_ROOT)
+        expected_live = sorted(pkg for pkg, spec in cfg.packages.items() if spec.weekly_live_test)
+        self.assertEqual([x["pkg"] for x in live], expected_live)
 
 
 class TestPythonCompatSync(unittest.TestCase):
@@ -226,6 +244,104 @@ class TestPythonCompatSync(unittest.TestCase):
         # Drops EOL python3_11 and EOL pypy3_11 automatically
         new_m2, new_o2 = compute_target_compat([11, 12, 13], [12, 13, 14, 15], ["pypy3_11", "pypy3_12"], pypys)
         self.assertEqual(format_python_compat(new_m2, new_o2), "PYTHON_COMPAT=( python3_{12..15} pypy3_12 )")
+
+
+class TestDistfilesAndDeps(unittest.TestCase):
+    def test_distfiles_repo_and_strategies(self) -> None:
+        cfg = load_config(REPO_ROOT)
+        self.assertEqual(cfg.overlay.effective_distfiles_repo, "locez/locez-overlay-distfiles")
+        self.assertIn("go-vendor", STRATEGIES)
+        self.assertIn("rust-vendor", STRATEGIES)
+        self.assertIn("rust-crates", STRATEGIES)
+        self.assertEqual(deps_release_tag("net-misc/tsshd", "0.1.10"), "net-misc-tsshd-0.1.10")
+        self.assertEqual(deps_tarball_name("tsshd", "0.1.10"), "tsshd-0.1.10-deps.tar.xz")
+        self.assertEqual(
+            deps_download_url("locez/locez-overlay-distfiles", "net-misc/tsshd", "0.1.10"),
+            "https://github.com/locez/locez-overlay-distfiles/releases/download/net-misc-tsshd-0.1.10/tsshd-0.1.10-deps.tar.xz",
+        )
+        self.assertEqual(
+            deps_ebuild_uri_template("locez/locez-overlay-distfiles"),
+            "https://github.com/locez/locez-overlay-distfiles/releases/download/${CATEGORY}-${PN}-${PV}/${P}-deps.tar.xz",
+        )
+
+    def test_extract_rust_git_sources(self) -> None:
+        pure = """
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "/tmp/vendor"
+"""
+        self.assertEqual(extract_rust_git_sources(pure), "")
+
+        with_git = """
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/Smithay/smithay?rev=812bd33"]
+git = "https://github.com/Smithay/smithay"
+rev = "812bd33"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "/tmp/vendor"
+"""
+        extracted = extract_rust_git_sources(with_git)
+        self.assertIn('[source."git+https://github.com/Smithay/smithay?rev=812bd33"]', extracted)
+        self.assertIn('replace-with = "gentoo"', extracted)
+        self.assertNotIn("crates-io", extracted)
+        self.assertNotIn("vendored-sources", extracted)
+
+    def test_placeholder_detection_and_primary_src_uri_parsing(self) -> None:
+        eb = f"""
+EAPI=8
+inherit cargo
+SRC_URI="
+\thttps://github.com/owner/${{PN}}/archive/refs/tags/v${{PV}}.tar.gz -> ${{P}}.tar.gz
+\t{DEPS_PLACEHOLDER}
+"
+"""
+        self.assertEqual(detect_deps_kind(eb), "rust")
+        self.assertTrue(
+            ebuild_needs_deps_resolution(eb, "locez/locez-overlay-distfiles", {}, "demo", "1.2.3")
+        )
+        self.assertEqual(
+            parse_primary_src_uri(eb, "app-misc/demo", "1.2.3", "locez/locez-overlay-distfiles"),
+            ("https://github.com/owner/demo/archive/refs/tags/v1.2.3.tar.gz", "demo-1.2.3.tar.gz"),
+        )
+        resolved_eb = eb.replace(DEPS_PLACEHOLDER, deps_ebuild_uri_template("locez/locez-overlay-distfiles"))
+        self.assertFalse(
+            ebuild_needs_deps_resolution(
+                resolved_eb,
+                "locez/locez-overlay-distfiles",
+                {"demo-1.2.3-deps.tar.xz": "DIST ..."},
+                "demo",
+                "1.2.3",
+            )
+        )
+        self.assertTrue(
+            ebuild_needs_deps_resolution(resolved_eb, "locez/locez-overlay-distfiles", {}, "demo", "1.2.3")
+        )
+
+    def test_expand_vars_prefix_safety_rewrite_and_crates_parser(self) -> None:
+        eb = 'MY_P="${PN}-v${PV}"\nMY_PV="v${PV}"\n'
+        # Single-pass regex must not corrupt $MY_PV using $MY_P or $PN using $P
+        self.assertEqual(
+            _expand_ebuild_vars("https://example.com/$MY_PV/$MY_P-$PN-$P.tar.gz", "app-misc/demo", "1.2.3", eb),
+            "https://example.com/v1.2.3/demo-v1.2.3-demo-demo-1.2.3.tar.gz",
+        )
+        rewritten = rewrite_ebuild_deps_metadata(
+            f'RUST_MIN_VER="1.80.0"\nSRC_URI="\n\t{DEPS_PLACEHOLDER}\n"\n',
+            kind="rust",
+            distfiles_repo="locez/locez-overlay-distfiles",
+            min_toolchain_ver="1.85.0",
+        )
+        self.assertIn('RUST_MIN_VER="1.85.0"', rewritten)
+        self.assertIn(deps_ebuild_uri_template("locez/locez-overlay-distfiles"), rewritten)
+        self.assertNotIn(DEPS_PLACEHOLDER, rewritten)
+
+        crates = parse_crates_from_ebuild('CRATES="\n\tserde@1.0.229\n\ttokio@1.45.0\n"\n')
+        self.assertEqual(crates, [("serde", "1.0.229"), ("tokio", "1.45.0")])
 
 
 if __name__ == "__main__":
