@@ -14,9 +14,6 @@ HOMEPAGE="https://github.com/locez/bilihud"
 EGIT_REPO_URI="https://github.com/locez/bilihud.git"
 EGIT_SUBMODULES=( '*' )
 
-EPYTEST_PLUGINS=()
-distutils_enable_tests pytest
-
 LICENSE="MIT"
 SLOT="0"
 
@@ -44,6 +41,9 @@ BDEPEND="
 	virtual/pkgconfig
 	test? ( dev-python/pyqt6[testlib,${PYTHON_USEDEP}] )
 "
+
+EPYTEST_PLUGINS=()
+distutils_enable_tests pytest
 
 python_configure_all() {
 	DISTUTILS_ARGS=(
