@@ -44,9 +44,9 @@ jobs:
           if [ -n "${{ inputs.package }}" ]; then
             ARGS="$ARGS --only ${{ inputs.package }}"
           elif [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%u)" != "1" ]; then
-            # On Tue-Sun scheduled runs, throttle versions that already have an open failure issue;
-            # Mondays and manual runs always retry everything.
-            ARGS="$ARGS --throttle-failed"
+            # On Tue-Sun scheduled runs, throttle versions that already have an open failure issue
+            # and skip weekly-cadence packages; Mondays and manual runs always check everything.
+            ARGS="$ARGS --throttle-failed --skip-weekly"
           fi
           python3 .github/autobump/main.py $ARGS
 

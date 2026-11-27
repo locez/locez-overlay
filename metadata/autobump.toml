@@ -225,7 +225,18 @@ build = { mode = "emerge-bin" }
 smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/baidunetdisk/baidunetdisk && test -L /opt/bin/baidunetdisk && test -f /usr/share/applications/baidunetdisk.desktop"
 
 [packages."sci-ml/llama-cpp"]
-detect = { type = "none" }
+detect = { type = "nvchecker", source = "github", github = "ggml-org/llama.cpp", use_max_tag = true, include_regex = "b[0-9]+", from_pattern = "^b([0-9]+)$", to_pattern = "0_pre\\1" }
+strategy = "github-release"
+cadence = "weekly"
+tag_ver_strip_prefix = "0_pre"
+url_template = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b{tag_ver}.tar.gz"
+dist_template = "llama-cpp-{ver}.tar.gz"
+extra_dists = [
+  { url_template = "https://github.com/ggml-org/llama.cpp/releases/download/b{tag_ver}/llama-b{tag_ver}-ui.tar.gz", dist_template = "llama-cpp-{ver}-ui.tar.gz" },
+]
+preserve_dists = ["ggml-org_models_tinyllamas_*.gguf"]
+retention = { type = "replace" }
+policy = "auto-merge"
 build = { mode = "emerge-full", use = ["-cuda", "-rocm", "-native", "-lto"], test = false }
 smoke_test = "llama-cli --version && llama-server --version"
 weekly_live_test = true

@@ -42,7 +42,15 @@ def _cmd_config_info(cfg: AutomationConfig, _args: argparse.Namespace) -> int:
 
 
 def _cmd_detect(cfg: AutomationConfig, args: argparse.Namespace) -> int:
-    _emit(detect_updates(cfg, only_pkg=args.only, throttle_failed=args.throttle_failed), args.result_file)
+    _emit(
+        detect_updates(
+            cfg,
+            only_pkg=args.only,
+            throttle_failed=args.throttle_failed,
+            skip_weekly=args.skip_weekly,
+        ),
+        args.result_file,
+    )
     return 0
 
 
@@ -231,6 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("detect", help="Detect outdated packages & ZFS unlock alerts")
     p.add_argument("--only", help="Filter to a single package")
     p.add_argument("--throttle-failed", action="store_true", help="Skip versions that already have an open failure issue")
+    p.add_argument("--skip-weekly", action="store_true", help="Skip packages with cadence='weekly' unless --only is set")
     p.add_argument("--result-file")
     p.set_defaults(func=_cmd_detect)
 

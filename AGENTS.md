@@ -20,7 +20,7 @@ This document is the primary operating manual for human maintainers and AI codin
   - `.github/actions/gentoo-build-test/action.yml` — Reusable Composite Action running real `gentoo/stage3` builds + smoke tests with daily Portage tree cache and weekly CI binpkg cache.
   - `.github/workflows/`:
     - `pkgcheck.yml` — Unit tests + `pkgcheck --net` on push/PR/weekly.
-    - `build-test.yml` — Real `gentoo/stage3` build & smoke-test for changed packages on PRs (plus manual `workflow_dispatch`).
+    - `build-test.yml` — Real `gentoo/stage3` build & smoke-test for changed packages on PRs and direct pushes to `master` (skipping bot merges; plus manual `workflow_dispatch`).
     - `autobump.yml` — Scheduled/manual version detection, bump, `pkgcheck`, `stage3` build/smoke-test, auto-merge or deduped failure Issue/Telegram + optional AI Draft PR.
     - `python-compat.yml` — Weekly/manual `PYTHON_COMPAT` sync against official Gentoo `profiles/desc/python_targets.desc` (adds latest active `python3_X`, drops EOL targets, verifies via `pkgcheck` + `stage3`, auto-merges on pass).
     - `weekly-health.yml` — Weekly live (`9999`) ebuild tests and kernel ZFS compatibility checks.
@@ -149,9 +149,10 @@ smoke_test = "test -x /usr/bin/example-bin && test -f /usr/share/applications/ex
 Field quick reference:
 - `detect`: `{ type = "nvchecker", ... }`, `{ type = "wechat-head" }`, or `{ type = "none" }`.
 - `strategy`: Registered key in `STRATEGIES`. Strategy-specific fields:
-  - `github-release`: requires `url_template` and `dist_template` (`{ver}` placeholder).
+  - `github-release`: requires `url_template` and `dist_template` (`{ver}`, `{tag_ver}`, `{pn}` placeholders); optional `tag_ver_strip_prefix`, `extra_dists` (list of `{ url_template, dist_template }`), and `preserve_dists` (globs of static `Manifest` `DIST` entries to keep untouched across bumps).
   - `go-vendor`: optional `go_build_target` (builds & uploads `${P}-deps.tar.xz` to `overlay.distfiles_repo` under tag `${CATEGORY}-${PN}-${PV}`).
   - `rust-vendor` / `rust-crates`: optional `cargo_manifest_dir` if `Cargo.toml` is in a subdirectory (`rust-vendor` uploads `${P}-deps.tar.xz` to `overlay.distfiles_repo`; `rust-crates` refreshes `CRATES`/`GIT_CRATES`/`LICENSE` in-place via `pycargoebuild -i`).
+- `cadence`: `"daily"` (default) or `"weekly"` (checked on Mondays during scheduled `autobump.yml` runs, and always checked on manual `workflow_dispatch`).
 - `retention`: `{ type = "replace" }` or `{ type = "keep-latest", count = N }`, optional `guard = "keep-last-zfs-compatible"`.
 - `policy`: `"auto-merge"` (default for verified packages) or `"pr-only"`.
 - `build`:

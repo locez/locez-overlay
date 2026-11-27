@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import shutil
@@ -15,6 +16,7 @@ from ..common import (
     download_file,
     http_get_text,
     list_release_ebuilds,
+    parse_manifest,
     run,
     write_manifest,
 )
@@ -26,6 +28,7 @@ def _replace_single_ebuild(
     dist_map: list[tuple[str, str]],
     *,
     verify_fn: Callable[[list[Path], Path], None] | None = None,
+    preserve_dists: tuple[str, ...] = (),
 ) -> None:
     pdir = ctx.pkg_dir
     ebuilds = list_release_ebuilds(ctx.repo_root, ctx.spec.pkg)
@@ -39,6 +42,11 @@ def _replace_single_ebuild(
     shutil.copy2(old_eb, new_eb)
 
     entries: dict[str, str] = {}
+    if preserve_dists:
+        for existing_name, existing_line in parse_manifest(pdir / "Manifest").items():
+            if any(fnmatch.fnmatchcase(existing_name, pat) for pat in preserve_dists):
+                entries[existing_name] = existing_line
+
     downloaded: list[Path] = []
     for distname, url in dist_map:
         dl = download_file(url, ctx.work / distname)
@@ -72,9 +80,16 @@ def bump_github_release(ctx: BumpContext) -> None:
         raise BumpError(
             f"{ctx.spec.pkg}: github-release strategy requires url_template and dist_template in autobump.toml"
         )
-    url = ctx.spec.url_template.format(ver=ctx.target_ver, pn=ctx.spec.pn)
-    distname = ctx.spec.dist_template.format(ver=ctx.target_ver, pn=ctx.spec.pn)
-    _replace_single_ebuild(ctx, [(distname, url)])
+    tag_ver = ctx.target_ver
+    if ctx.spec.tag_ver_strip_prefix and tag_ver.startswith(ctx.spec.tag_ver_strip_prefix):
+        tag_ver = tag_ver[len(ctx.spec.tag_ver_strip_prefix) :]
+    fmt = {"ver": ctx.target_ver, "tag_ver": tag_ver, "pn": ctx.spec.pn}
+    dist_map: list[tuple[str, str]] = [
+        (ctx.spec.dist_template.format(**fmt), ctx.spec.url_template.format(**fmt))
+    ]
+    for extra in ctx.spec.extra_dists:
+        dist_map.append((extra.dist_template.format(**fmt), extra.url_template.format(**fmt)))
+    _replace_single_ebuild(ctx, dist_map, preserve_dists=ctx.spec.preserve_dists)
 
 
 def bump_cider(ctx: BumpContext) -> None:

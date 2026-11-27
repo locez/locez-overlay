@@ -1,6 +1,11 @@
 name: Gentoo Build & Integration Test
 
 on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - "README.md"
+      - "**.md"
   pull_request:
     branches: [ master ]
     paths-ignore:
@@ -39,9 +44,11 @@ on:
 jobs:
   plan:
     if: >
-      github.event_name != 'pull_request' ||
-      (!startsWith(github.head_ref, 'autobump/') &&
-       !startsWith(github.head_ref, 'python-compat/'))
+      (github.event_name != 'pull_request' ||
+       (!startsWith(github.head_ref, 'autobump/') &&
+        !startsWith(github.head_ref, 'python-compat/'))) &&
+      (github.event_name != 'push' ||
+       github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -61,6 +68,12 @@ jobs:
             PKG="${{ inputs.package }}"
             SLUG="${PKG//\//-}"
             PKGS="[{\"pkg\":\"${PKG}\",\"slug\":\"${SLUG}\"}]"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+              BEFORE="HEAD~1"
+            fi
+            PKGS=$(python3 .github/autobump/main.py changed-packages --base "$BEFORE")
           else
             git fetch origin "${{ github.base_ref }}" --depth=1 || true
             PKGS=$(python3 .github/autobump/main.py changed-packages --base "origin/${{ github.base_ref }}")

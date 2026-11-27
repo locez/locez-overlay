@@ -35,8 +35,10 @@ from engine.deps import (
 from engine.detect import filter_throttled_updates
 from engine.notify import extract_log_excerpt, format_telegram_event
 from engine.plugins import STRATEGIES
+from engine.plugins.base import BumpContext
 from engine.plugins.kernel import _extract_filesdir_patches
 from engine.plugins.rust import parse_crates_from_ebuild
+from engine.plugins.simple import bump_github_release
 from engine.python_compat import (
     compute_target_compat,
     format_python_compat,
@@ -45,7 +47,17 @@ from engine.python_compat import (
 )
 from engine.repair import validate_allowed_changes
 from engine.retention import ebuild_forbids_zfs, ebuild_supports_zfs, must_keep_for_zfs
-from engine.schema import ConfigError, _parse_build_spec, _parse_retention_spec, generate_nvchecker_toml, load_config
+from engine.schema import (
+    AutomationConfig,
+    ConfigError,
+    ExtraDistSpec,
+    OverlayConfig,
+    PackageSpec,
+    _parse_build_spec,
+    _parse_retention_spec,
+    generate_nvchecker_toml,
+    load_config,
+)
 
 
 class TestSchemaAndConfig(unittest.TestCase):
@@ -172,6 +184,91 @@ class TestRetentionAndKernelHelpers(unittest.TestCase):
         self.assertLess(version_key("7.2.5"), version_key("7.2.15"))
         self.assertLess(version_key("11.0_p9"), version_key("11.0_p17"))
         self.assertLess(version_key("4.0.9.1"), version_key("4.0.17"))
+        self.assertLess(version_key("0_pre9756"), version_key("0_pre12816"))
+
+    def test_github_release_multi_dist_and_preserve_dists(self) -> None:
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pdir = root / "cat" / "demo"
+            pdir.mkdir(parents=True)
+            (pdir / "demo-0_pre100.ebuild").write_text("EAPI=8\n", encoding="utf-8")
+            keep_line = "DIST static-model-abc.gguf 42 BLAKE2B " + ("a" * 128) + " SHA512 " + ("b" * 128)
+            old_line = "DIST demo-0_pre100.tar.gz 10 BLAKE2B " + ("0" * 128) + " SHA512 " + ("0" * 128)
+            (pdir / "Manifest").write_text(f"{old_line}\n{keep_line}\n", encoding="utf-8")
+
+            spec = PackageSpec(
+                pkg="cat/demo",
+                strategy="github-release",
+                cadence="weekly",
+                tag_ver_strip_prefix="0_pre",
+                url_template="https://example.invalid/tags/b{tag_ver}.tar.gz",
+                dist_template="{pn}-{ver}.tar.gz",
+                extra_dists=(
+                    ExtraDistSpec(
+                        url_template="https://example.invalid/releases/b{tag_ver}/{pn}-b{tag_ver}-ui.tar.gz",
+                        dist_template="{pn}-{ver}-ui.tar.gz",
+                    ),
+                ),
+                preserve_dists=("static-model-*.gguf",),
+            )
+            cfg = AutomationConfig(
+                repo_root=root,
+                overlay=OverlayConfig(name="test", repository="org/test", base_branch="master", maintainer="me"),
+                build=load_config(REPO_ROOT).build,
+                notify=load_config(REPO_ROOT).notify,
+                ai_repair=load_config(REPO_ROOT).ai_repair,
+                packages={"cat/demo": spec},
+            )
+            work = root / "work"
+            work.mkdir()
+            fetched_urls: list[str] = []
+
+            def fake_download(url: str, dest: Path) -> Path:
+                fetched_urls.append(url)
+                dest.write_bytes(url.encode("utf-8"))
+                return dest
+
+            ctx = BumpContext(cfg=cfg, spec=spec, target_ver="0_pre200", work=work)
+            with patch("engine.plugins.simple.download_file", side_effect=fake_download):
+                bump_github_release(ctx)
+
+            self.assertEqual(
+                fetched_urls,
+                [
+                    "https://example.invalid/tags/b200.tar.gz",
+                    "https://example.invalid/releases/b200/demo-b200-ui.tar.gz",
+                ],
+            )
+            self.assertFalse((pdir / "demo-0_pre100.ebuild").exists())
+            self.assertTrue((pdir / "demo-0_pre200.ebuild").exists())
+            manifest = (pdir / "Manifest").read_text(encoding="utf-8")
+            self.assertIn("DIST demo-0_pre200.tar.gz ", manifest)
+            self.assertIn("DIST demo-0_pre200-ui.tar.gz ", manifest)
+            self.assertIn(keep_line, manifest)
+            self.assertNotIn("demo-0_pre100.tar.gz", manifest)
+
+    def test_generate_nvchecker_toml_respects_only_pkgs_filter(self) -> None:
+        cfg = load_config(REPO_ROOT)
+        with tempfile.TemporaryDirectory() as tmp:
+            weekly = {pkg for pkg, s in cfg.packages.items() if s.cadence == "weekly"}
+            self.assertIn("sci-ml/llama-cpp", weekly)
+            daily_nv = {
+                pkg
+                for pkg, s in cfg.packages.items()
+                if s.detect.get("type") == "nvchecker" and s.cadence != "weekly"
+            }
+            out = generate_nvchecker_toml(
+                cfg,
+                Path(tmp) / "nv.toml",
+                Path(tmp) / "old.json",
+                Path(tmp) / "new.json",
+                only_pkgs=daily_nv,
+            )
+            data = tomllib.loads(out.read_text(encoding="utf-8"))
+            self.assertNotIn("sci-ml/llama-cpp", data)
+            self.assertIn("media-sound/cider", data)
 
 
 class TestGuardrailsContextAndNotify(unittest.TestCase):

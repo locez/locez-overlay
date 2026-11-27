@@ -70,6 +70,7 @@ def detect_updates(
     *,
     only_pkg: str | None = None,
     throttle_failed: bool = False,
+    skip_weekly: bool = False,
 ) -> dict[str, Any]:
     """Run nvchecker (generated from autobump.toml), custom probes, and ZFS unlock checks."""
     updates: list[dict[str, str]] = []
@@ -77,16 +78,23 @@ def detect_updates(
     errors: list[dict[str, str]] = []
     zfs_alerts: list[dict[str, str]] = []
 
+    def _cadence_active(pkg_spec: Any) -> bool:
+        return bool(only_pkg) or not (skip_weekly and pkg_spec.cadence == "weekly")
+
     nv_pkgs = [
         pkg
         for pkg, spec in sorted(cfg.packages.items())
-        if spec.detect.get("type") == "nvchecker" and (not only_pkg or pkg == only_pkg)
+        if spec.detect.get("type") == "nvchecker"
+        and (not only_pkg or pkg == only_pkg)
+        and _cadence_active(spec)
     ]
 
     if nv_pkgs:
         with tempfile.TemporaryDirectory(prefix="nvchecker-") as tmp:
             tdir = Path(tmp)
-            conf_path = generate_nvchecker_toml(cfg, tdir / "nvchecker.toml", tdir / "old.json", tdir / "new.json")
+            conf_path = generate_nvchecker_toml(
+                cfg, tdir / "nvchecker.toml", tdir / "old.json", tdir / "new.json", only_pkgs=set(nv_pkgs)
+            )
             (tdir / "old.json").write_text('{"version": 2, "data": {}}\n', encoding="utf-8")
             nv_cmd = ["nvchecker", "-c", str(conf_path)]
             if only_pkg:
@@ -125,6 +133,8 @@ def detect_updates(
 
     for pkg, spec in sorted(cfg.packages.items()):
         if only_pkg and pkg != only_pkg:
+            continue
+        if not _cadence_active(spec):
             continue
         if spec.detect.get("type") == "wechat-head":
             try:

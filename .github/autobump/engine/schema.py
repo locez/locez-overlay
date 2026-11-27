@@ -9,12 +9,14 @@ from typing import Any, Literal
 
 BuildMode = Literal["emerge-full", "emerge-bin", "kernel-sources", "dep-resolve"]
 MergePolicy = Literal["auto-merge", "pr-only", "issue-only"]
+Cadence = Literal["daily", "weekly"]
 RetentionType = Literal["replace", "keep-latest"]
 RetentionGuard = Literal["none", "keep-last-zfs-compatible"]
 DetectType = Literal["none", "nvchecker", "wechat-head"]
 
 VALID_BUILD_MODES: frozenset[str] = frozenset({"emerge-full", "emerge-bin", "kernel-sources", "dep-resolve"})
 VALID_POLICIES: frozenset[str] = frozenset({"auto-merge", "pr-only", "issue-only"})
+VALID_CADENCES: frozenset[str] = frozenset({"daily", "weekly"})
 VALID_RETENTION_TYPES: frozenset[str] = frozenset({"replace", "keep-latest"})
 VALID_RETENTION_GUARDS: frozenset[str] = frozenset({"none", "keep-last-zfs-compatible"})
 VALID_DETECT_TYPES: frozenset[str] = frozenset({"none", "nvchecker", "wechat-head"})
@@ -89,10 +91,17 @@ class RetentionSpec:
 
 
 @dataclass(frozen=True)
+class ExtraDistSpec:
+    url_template: str
+    dist_template: str
+
+
+@dataclass(frozen=True)
 class PackageSpec:
     pkg: str
     detect: dict[str, Any] = field(default_factory=dict)
     strategy: str = ""
+    cadence: Cadence = "daily"
     retention: RetentionSpec = field(default_factory=RetentionSpec)
     policy: MergePolicy = "pr-only"
     build: BuildSpec = field(default_factory=BuildSpec)
@@ -100,6 +109,9 @@ class PackageSpec:
     smoke_test_script: str = ""
     url_template: str = ""
     dist_template: str = ""
+    tag_ver_strip_prefix: str = ""
+    extra_dists: tuple[ExtraDistSpec, ...] = ()
+    preserve_dists: tuple[str, ...] = ()
     go_build_target: str = ""
     cargo_manifest_dir: str = ""
     weekly_live_test: bool = False
@@ -250,6 +262,28 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
         policy = pdata.get("policy", "pr-only")
         if policy not in VALID_POLICIES:
             raise ConfigError(f"{pkg}: invalid policy '{policy}'")
+        cadence = pdata.get("cadence", "daily")
+        if cadence not in VALID_CADENCES:
+            raise ConfigError(f"{pkg}: invalid cadence '{cadence}' (expected one of {sorted(VALID_CADENCES)})")
+
+        raw_extra_dists = pdata.get("extra_dists", ())
+        if not isinstance(raw_extra_dists, list | tuple):
+            raise ConfigError(f"{pkg}: extra_dists must be a list of tables")
+        extra_dists: list[ExtraDistSpec] = []
+        for idx, entry in enumerate(raw_extra_dists):
+            if not isinstance(entry, dict) or not entry.get("url_template") or not entry.get("dist_template"):
+                raise ConfigError(f"{pkg}: extra_dists[{idx}] must define url_template and dist_template")
+            extra_dists.append(
+                ExtraDistSpec(
+                    url_template=str(entry["url_template"]),
+                    dist_template=str(entry["dist_template"]),
+                )
+            )
+
+        raw_preserve_dists = pdata.get("preserve_dists", ())
+        if not isinstance(raw_preserve_dists, list | tuple):
+            raise ConfigError(f"{pkg}: preserve_dists must be a list of filename globs")
+        preserve_dists = tuple(str(p) for p in raw_preserve_dists)
 
         smoke_test = pdata.get("smoke_test", "").strip()
         if "\n" in smoke_test:
@@ -270,6 +304,7 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
             pkg=pkg,
             detect=detect,
             strategy=pdata.get("strategy", ""),
+            cadence=cadence,
             retention=_parse_retention_spec(pkg, dict(pdata.get("retention", {}))),
             policy=policy,
             build=_parse_build_spec(pkg, dict(pdata.get("build", {}))),
@@ -277,6 +312,9 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
             smoke_test_script=smoke_script,
             url_template=pdata.get("url_template", ""),
             dist_template=pdata.get("dist_template", ""),
+            tag_ver_strip_prefix=str(pdata.get("tag_ver_strip_prefix", "")),
+            extra_dists=tuple(extra_dists),
+            preserve_dists=preserve_dists,
             go_build_target=pdata.get("go_build_target", ""),
             cargo_manifest_dir=pdata.get("cargo_manifest_dir", ""),
             weekly_live_test=bool(pdata.get("weekly_live_test", False)),
@@ -292,7 +330,14 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
     )
 
 
-def generate_nvchecker_toml(cfg: AutomationConfig, dest: Path, oldver: Path, newver: Path) -> Path:
+def generate_nvchecker_toml(
+    cfg: AutomationConfig,
+    dest: Path,
+    oldver: Path,
+    newver: Path,
+    *,
+    only_pkgs: set[str] | None = None,
+) -> Path:
     """Materialize a runtime nvchecker.toml from metadata/autobump.toml (single source of truth)."""
 
     def _toml_val(val: Any) -> str:
@@ -313,6 +358,8 @@ def generate_nvchecker_toml(cfg: AutomationConfig, dest: Path, oldver: Path, new
     ]
     for pkg, spec in sorted(cfg.packages.items()):
         if spec.detect.get("type") != "nvchecker":
+            continue
+        if only_pkgs is not None and pkg not in only_pkgs:
             continue
         lines.append(f'["{pkg}"]')
         for k, v in spec.detect.items():
