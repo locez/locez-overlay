@@ -1,21 +1,42 @@
 Local performance notes
 =======================
 
-This ebuild accepts a package variable for CUDA native builds:
+Automatic NVIDIA GPU detection (USE="native cuda")
+--------------------------------------------------
 
-  LLAMA_CPP_CUDA_ARCHITECTURES
+When USE="native cuda" is enabled, this ebuild automatically probes the local
+NVIDIA GPU(s) in pkg_setup() (which runs as root, outside Portage's build
+sandbox, avoiding /dev/nvidia* video-group permission failures) and persists
+the normalized CMAKE_CUDA_ARCHITECTURES into src_configure().
 
-Supported forms:
+Detection order:
+  1. nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader,nounits
+     (also initializes /dev/nvidia-uvm and /dev/nvidia-modeset)
+  2. /opt/cuda/bin/__nvcc_device_query
+  3. /proc/driver/nvidia/gpus/*/information (world-readable procfs fallback)
+  4. Portable CUDA architecture set (graceful fallback on headless/binpkg hosts)
 
-  auto          Query nvidia-smi during emerge and use all visible GPUs.
-  12.0          Compute capability, from nvidia-smi. Converted to 120a-real.
-  8.9           Converted to 89-real.
-  120a-real     Passed to CMake directly.
-  8.9;12.0      Multiple GPUs, converted to 89-real;120a-real.
+Blackwell SM 12x targets (e.g. RTX 5070 Ti compute_cap 12.0) are automatically
+promoted to architecture-accelerated native SASS (120a-real) for FP4 Tensor
+Core instructions with zero PTX JIT overhead.
 
-For RTX 5070 Ti:
+Optional overrides
+------------------
 
-  LLAMA_CPP_CUDA_ARCHITECTURES="12.0"
+  LLAMA_CPP_CUDA_ARCHITECTURES (or standard Gentoo/CMake CUDAARCHS):
+    auto          Force auto-detection (fail if no GPU is found).
+    12.0          Compute capability -> 120a-real.
+    8.9           Compute capability -> 89-real.
+    sm_120        Converted to 120a-real.
+    120a-real     Passed to CMake directly.
+    8.9;12.0      Multiple GPUs -> 89-real;120a-real.
+    all           Build all architectures supported by the installed CUDA toolkit.
+
+  LLAMA_CPP_CUDA_FA_QUANTS (default: "all"):
+    FlashAttention K-V quantization combinations compiled into CUDA kernels.
+
+  LLAMA_CPP_CUDA_COMPRESSION_MODE (default: "speed" with USE="native", else "size"):
+    CUDA >= 12.8 fatbin compression mode: none, speed, balance, size.
 
 Example /etc/portage/package.env:
 
@@ -24,26 +45,9 @@ Example /etc/portage/package.env:
 Example /etc/portage/env/llama-cpp-perf:
 
   LLAMA_CPP_CUDA_ARCHITECTURES="12.0"
+  LLAMA_CPP_CUDA_COMPRESSION_MODE="none"
 
-You can also try:
+During configure, verify the log shows:
 
-  LLAMA_CPP_CUDA_ARCHITECTURES="auto"
-
-When USE="native cuda", this variable must be set. Use explicit compute
-capability if Portage builds in a chroot/container or otherwise cannot see the
-NVIDIA GPU.
-
-If auto detection fails, the ebuild prints:
-
-  nvidia-smi -L
-  nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits
-
-Set an explicit value such as 12.0 to skip auto detection. This is the
-recommended path for reliable local performance builds.
-
-During configure, check the log for:
-
-  Using CMAKE_CUDA_ARCHITECTURES=120a-real
-
-If the log still says CMAKE_CUDA_ARCHITECTURES=native, this local ebuild or
-the package environment did not take effect.
+  CUDA configuration: CMAKE_CUDA_ARCHITECTURES=120a-real
+  CUDA configuration: GGML_CUDA_FA_QUANTS=all, GGML_CUDA_COMPRESSION_MODE=speed

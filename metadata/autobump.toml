@@ -224,6 +224,12 @@ policy = "auto-merge"
 build = { mode = "emerge-bin" }
 smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/baidunetdisk/baidunetdisk && test -L /opt/bin/baidunetdisk && test -f /usr/share/applications/baidunetdisk.desktop"
 
+[packages."sci-ml/llama-cpp"]
+detect = { type = "none" }
+build = { mode = "emerge-full", use = ["-cuda", "-rocm", "-native", "-lto"], test = false }
+smoke_test = "llama-cli --version && llama-server --version"
+weekly_live_test = true
+
 [packages."virtual/linux-sources"]
 detect = { type = "none" }
 build = { mode = "dep-resolve" }
