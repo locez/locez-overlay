@@ -62,14 +62,14 @@ runs:
 
     - name: Restore daily Gentoo Portage tree cache
       id: restore_tree
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: ${{ steps.cache_keys.outputs.tree_dir }}
         key: ${{ steps.cache_keys.outputs.tree_key }}
 
     - name: Restore weekly Gentoo CI binpkg cache
       id: restore_binpkgs
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: ${{ steps.cache_keys.outputs.binpkg_dir }}
         key: ${{ steps.cache_keys.outputs.binpkg_save_key }}
@@ -145,7 +145,7 @@ runs:
 
     - name: Save daily Gentoo Portage tree cache
       if: always() && steps.build.outputs.save_tree == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       continue-on-error: true
       with:
         path: ${{ steps.cache_keys.outputs.tree_dir }}
@@ -153,7 +153,7 @@ runs:
 
     - name: Save weekly Gentoo CI binpkg cache
       if: always() && steps.build.outputs.save_binpkgs == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       continue-on-error: true
       with:
         path: ${{ steps.cache_keys.outputs.binpkg_dir }}

@@ -25,9 +25,9 @@ jobs:
       has_updates: ${{ steps.detect.outputs.has_updates }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
 
@@ -100,17 +100,17 @@ jobs:
         include: ${{ fromJson(needs.detect.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
 
       - name: Set up Go (for go-vendor strategy)
         if: matrix.strategy == 'go-vendor'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "stable"
 
@@ -291,7 +291,7 @@ jobs:
 
       - name: Upload FailureContext artifact
         if: steps.on_fail.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: failure-context-${{ matrix.slug }}
           path: |

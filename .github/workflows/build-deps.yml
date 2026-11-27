@@ -53,7 +53,7 @@ jobs:
           echo "head_repo=$(jq -r '"\(.headRepositoryOwner.login)/\(.headRepository.name)"' /tmp/pr.json)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
@@ -67,11 +67,11 @@ jobs:
           # Always run automation engine from the trusted base branch when DISTFILES_TOKEN is in scope
           git checkout "upstream/${{ steps.pr.outputs.base_ref }}" -- .github/autobump
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "stable"
 
@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload resolved deps patch artifact
         if: steps.resolve.outputs.count != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pr-deps-patch
           path: /tmp/deps-artifact
@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.resolve.outputs.head_repo }}
           ref: ${{ needs.resolve.outputs.head_ref }}
@@ -155,7 +155,7 @@ jobs:
           git checkout "upstream/${{ needs.resolve.outputs.base_ref }}" -- .github/autobump .github/actions
 
       - name: Download & apply resolved deps patch
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pr-deps-patch
           path: /tmp/deps-artifact
@@ -188,7 +188,7 @@ jobs:
 
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.resolve.outputs.head_repo }}
           ref: ${{ needs.resolve.outputs.head_ref }}
@@ -196,7 +196,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download resolved deps patch
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pr-deps-patch
           path: /tmp/deps-artifact

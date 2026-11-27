@@ -35,7 +35,7 @@ jobs:
       has_packages: ${{ steps.plan.outputs.has_packages }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -71,7 +71,7 @@ jobs:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run pkgcheck on package
         uses: pkgcore/pkgcheck-action@v1
@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload Portage build logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-logs-${{ matrix.slug }}
           path: /tmp/build-logs

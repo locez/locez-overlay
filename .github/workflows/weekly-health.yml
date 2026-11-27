@@ -13,7 +13,7 @@ jobs:
       has_live: ${{ steps.live.outputs.has_live }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: List 9999 live packages from metadata/autobump.toml
         id: live
@@ -40,7 +40,7 @@ jobs:
         include: ${{ fromJson(needs.plan-live.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build & smoke-test 9999 live ebuild in Gentoo stage3
         id: test
