@@ -78,10 +78,15 @@ def render_container_test_script(
         "set -euo pipefail",
         f"mkdir -p {shlex.quote(log_dir)} /etc/portage/repos.conf /etc/portage/package.accept_keywords /etc/portage/package.use /etc/portage/env /etc/portage/package.env",
         "",
-        "# 1. Configure main gentoo tree + mounted overlay",
+        "# 1. Configure main gentoo tree, profile + mounted overlay",
         "if [[ ! -d /var/db/repos/gentoo/metadata ]]; then",
         "  emerge-webrsync -q",
         "fi",
+        *(
+            [f"eselect profile set {shlex.quote(cfg.build.profile)}"]
+            if cfg.build.profile
+            else []
+        ),
         f"cat > /etc/portage/repos.conf/{repo_name}.conf <<'REPO'",
         f"[{repo_name}]",
         f"location = {overlay_mount}",

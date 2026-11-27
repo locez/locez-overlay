@@ -36,6 +36,7 @@ class OverlayConfig:
 @dataclass(frozen=True)
 class BuildDefaults:
     stage3_image: str = "docker.io/gentoo/stage3:latest"
+    profile: str = "default/linux/amd64/23.0/desktop"
     use_binhost: bool = True
     binhost_uri: str = "https://distfiles.gentoo.org/releases/amd64/binpackages/23.0/x86-64/"
 
@@ -190,6 +191,7 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
     bd = raw.get("build", {})
     build = BuildDefaults(
         stage3_image=bd.get("stage3_image", BuildDefaults.stage3_image),
+        profile=bd.get("profile", BuildDefaults.profile),
         use_binhost=bool(bd.get("use_binhost", True)),
         binhost_uri=bd.get("binhost_uri", BuildDefaults.binhost_uri),
     )

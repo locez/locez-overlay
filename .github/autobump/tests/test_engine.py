@@ -82,6 +82,7 @@ class TestBuilderScripts(unittest.TestCase):
                 self.assertIn("<<'MAKECONF'", script)
                 self.assertIn("PORTAGE_LOGDIR=/build-logs", script)
                 self.assertIn("getuto", script)
+                self.assertIn("eselect profile set default/linux/amd64/23.0/desktop", script)
                 self.assertNotIn('MAKEOPTS="-j$(nproc)"', script)
                 if spec.smoke_test_script:
                     self.assertIn(f"bash /overlay/{spec.smoke_test_script}", script)

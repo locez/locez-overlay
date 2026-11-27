@@ -8,8 +8,9 @@ base_branch = "master"
 maintainer = "locez"
 
 [build]
-# Gentoo container image + official binhost for fast dependency installs
+# Gentoo container image + desktop profile + official binhost for fast dependency installs
 stage3_image = "docker.io/gentoo/stage3:latest"
+profile = "default/linux/amd64/23.0/desktop"
 use_binhost = true
 binhost_uri = "https://distfiles.gentoo.org/releases/amd64/binpackages/23.0/x86-64/"
 
