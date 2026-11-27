@@ -81,11 +81,21 @@ class TestBuilderScripts(unittest.TestCase):
                 script = render_container_test_script(cfg, spec, atom=atom, log_dir="/build-logs")
                 self.assertIn("<<'MAKECONF'", script)
                 self.assertIn("PORTAGE_LOGDIR=/build-logs", script)
-                self.assertIn("getuto", script)
+                self.assertIn("-binpkg-request-signature", script)
+                self.assertIn("buildpkg", script)
                 self.assertIn("eselect profile set default/linux/amd64/23.0/desktop", script)
                 self.assertIn('CONFIG_PROTECT="-*"', script)
+                self.assertIn("parallel-install", script)
+                self.assertIn("-merge-sync", script)
                 self.assertNotIn("--binpkg-respect-use", script)
                 self.assertNotIn('MAKEOPTS="-j$(nproc)"', script)
+                if spec.build.mode != "dep-resolve":
+                    self.assertIn('--jobs="${NPROC}" --load-average="${NPROC}"', script)
+                    self.assertIn(f"--usepkg-exclude={pkg}", script)
+                    self.assertIn(f"--buildpkg-exclude={pkg}", script)
+                if spec.build.mode == "emerge-full" and spec.build.test:
+                    self.assertIn(f"echo '{pkg}", script)
+                    self.assertIn("test", script.split("/etc/portage/package.use/10-target")[0].splitlines()[-1])
                 if spec.smoke_test_script:
                     self.assertIn(f"bash /overlay/{spec.smoke_test_script}", script)
                 spath = Path(tmp) / f"{spec.slug}.sh"
@@ -93,6 +103,21 @@ class TestBuilderScripts(unittest.TestCase):
                 subprocess.run(["bash", "-n", str(spath)], check=True)
                 modes.add(spec.build.mode)
         self.assertEqual(modes, {"emerge-full", "emerge-bin", "kernel-sources", "dep-resolve"})
+
+    def test_python_target_single_mode_probe_and_epython(self) -> None:
+        cfg = load_config(REPO_ROOT)
+        spec = cfg.packages["app-misc/bilihud"]
+        script = render_container_test_script(
+            cfg, spec, atom="=app-misc/bilihud-9999", log_dir="/build-logs", python_target="python3_15"
+        )
+        self.assertIn("dev-python/* PYTHON_TARGETS: -* python3_15", script)
+        self.assertIn("app-misc/bilihud PYTHON_TARGETS: -* python3_15", script)
+        self.assertIn("export EPYTHON=python3.15", script)
+        self.assertIn("falling back to additive PYTHON_TARGETS", script)
+        with tempfile.TemporaryDirectory() as tmp:
+            spath = Path(tmp) / "bilihud-py315.sh"
+            spath.write_text(script, encoding="utf-8")
+            subprocess.run(["bash", "-n", str(spath)], check=True)
 
     def test_smoke_scripts_valid_bash(self) -> None:
         smoke_dir = REPO_ROOT / ".github" / "smoke"

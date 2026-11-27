@@ -1,5 +1,5 @@
 name: "Gentoo Stage3 Build & Smoke Test"
-description: "Render and execute a Gentoo stage3 + official binhost emerge & smoke_test for a single overlay package"
+description: "Render and execute a Gentoo stage3 + official binhost + CI binpkg cache emerge & smoke_test for a single overlay package"
 
 inputs:
   package:
@@ -40,12 +40,54 @@ runs:
           df -h /
         fi
 
+    - name: Prepare Gentoo tree & binpkg cache keys
+      id: cache_keys
+      shell: bash
+      run: |
+        DAY="$(date -u +%Y-%m-%d)"
+        WEEK="$(date -u +%Y-W%V)"
+        PY_TAG="${{ inputs.python-target }}"
+        [ -z "$PY_TAG" ] && PY_TAG="default"
+        PKG_SLUG="$(echo '${{ inputs.package }}' | tr '/:' '--')"
+
+        CACHE_ROOT="${{ runner.temp }}/gentoo-cache"
+        mkdir -p "${CACHE_ROOT}/gentoo-tree" "${CACHE_ROOT}/binpkgs"
+
+        echo "cache_root=${CACHE_ROOT}" >> "$GITHUB_OUTPUT"
+        echo "tree_dir=${CACHE_ROOT}/gentoo-tree" >> "$GITHUB_OUTPUT"
+        echo "binpkg_dir=${CACHE_ROOT}/binpkgs" >> "$GITHUB_OUTPUT"
+        echo "tree_key=gentoo-tree-v1-${DAY}" >> "$GITHUB_OUTPUT"
+        echo "binpkg_prefix=gentoo-binpkgs-v1-${WEEK}-${PY_TAG}-" >> "$GITHUB_OUTPUT"
+        echo "binpkg_save_key=gentoo-binpkgs-v1-${WEEK}-${PY_TAG}-${PKG_SLUG}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore daily Gentoo Portage tree cache
+      id: restore_tree
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.cache_keys.outputs.tree_dir }}
+        key: ${{ steps.cache_keys.outputs.tree_key }}
+
+    - name: Restore weekly Gentoo CI binpkg cache
+      id: restore_binpkgs
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.cache_keys.outputs.binpkg_dir }}
+        key: ${{ steps.cache_keys.outputs.binpkg_save_key }}
+        restore-keys: |
+          ${{ steps.cache_keys.outputs.binpkg_prefix }}
+
     - name: Render and run Gentoo stage3 build & smoke test
+      id: build
       shell: bash
       run: |
         set -euo pipefail
         LOG_DIR="${{ inputs.log-dir }}"
-        mkdir -p "$LOG_DIR"
+        CACHE_ROOT="${{ steps.cache_keys.outputs.cache_root }}"
+        TREE_DIR="${{ steps.cache_keys.outputs.tree_dir }}"
+        BINPKG_DIR="${{ steps.cache_keys.outputs.binpkg_dir }}"
+        mkdir -p "$LOG_DIR" "$TREE_DIR" "$BINPKG_DIR"
+
+        BEFORE_BINPKGS="$(find "$BINPKG_DIR" -name '*.gpkg.tar' 2>/dev/null | wc -l)"
 
         LIVE_FLAG=""
         if [ "${{ inputs.live }}" = "true" ]; then
@@ -69,10 +111,50 @@ runs:
 
         IMAGE="$(python3 .github/autobump/main.py config-info | jq -r '.build.stage3_image')"
 
+        set +e
         docker run --rm \
           -v "${{ github.workspace }}:/overlay:ro" \
           -v "${SCRIPT_PATH}:/run-build-test.sh:ro" \
           -v "${LOG_DIR}:/build-logs" \
+          -v "${TREE_DIR}:/var/db/repos/gentoo" \
+          -v "${BINPKG_DIR}:/var/cache/binpkgs" \
           "$IMAGE" \
           bash /run-build-test.sh 2>&1 | tee "${LOG_DIR}/console.log"
-        exit "${PIPESTATUS[0]}"
+        DOCKER_EXIT="${PIPESTATUS[0]}"
+        set -e
+
+        # Ensure runner user owns cached files created by root inside Docker
+        sudo chown -R "$(id -u):$(id -g)" "$CACHE_ROOT" || true
+
+        if [ "${{ steps.restore_tree.outputs.cache-hit }}" != "true" ] && [ -d "${TREE_DIR}/metadata" ]; then
+          echo "save_tree=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "save_tree=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        AFTER_BINPKGS="$(find "$BINPKG_DIR" -name '*.gpkg.tar' 2>/dev/null | wc -l)"
+        BINPKG_MB="$(du -sm "$BINPKG_DIR" | awk '{print $1}')"
+        echo "CI binpkg cache: ${BEFORE_BINPKGS} -> ${AFTER_BINPKGS} packages (${BINPKG_MB} MiB)"
+        if [ "$AFTER_BINPKGS" -gt "$BEFORE_BINPKGS" ] && [ "$BINPKG_MB" -le 4096 ]; then
+          echo "save_binpkgs=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "save_binpkgs=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit "$DOCKER_EXIT"
+
+    - name: Save daily Gentoo Portage tree cache
+      if: always() && steps.build.outputs.save_tree == 'true'
+      uses: actions/cache/save@v4
+      continue-on-error: true
+      with:
+        path: ${{ steps.cache_keys.outputs.tree_dir }}
+        key: ${{ steps.cache_keys.outputs.tree_key }}
+
+    - name: Save weekly Gentoo CI binpkg cache
+      if: always() && steps.build.outputs.save_binpkgs == 'true'
+      uses: actions/cache/save@v4
+      continue-on-error: true
+      with:
+        path: ${{ steps.cache_keys.outputs.binpkg_dir }}
+        key: ${{ steps.cache_keys.outputs.binpkg_save_key }}
