@@ -67,11 +67,16 @@ def render_container_test_script(
     binhost_lines: list[str] = []
     if cfg.build.use_binhost:
         binhost_lines = [
+            f"BINHOST_URI={shlex.quote(cfg.build.binhost_uri)}",
+            'if [[ "${GENTOO_ARCH}" != "amd64" ]]; then',
+            '  BINHOST_URI="${BINHOST_URI/\\/amd64\\/binpackages\\///${GENTOO_ARCH}/binpackages/}"',
+            '  BINHOST_URI="${BINHOST_URI/\\/x86-64\\///${BINHOST_SUBARCH}/}"',
+            "fi",
             "mkdir -p /etc/portage/binrepos.conf",
-            "cat > /etc/portage/binrepos.conf/gentoobinhost.conf <<'BINHOST'",
+            "cat > /etc/portage/binrepos.conf/gentoobinhost.conf <<BINHOST",
             "[gentoobinhost]",
             "priority = 1",
-            f"sync-uri = {cfg.build.binhost_uri}",
+            "sync-uri = ${BINHOST_URI}",
             "BINHOST",
         ]
 
@@ -85,20 +90,29 @@ def render_container_test_script(
     if cfg.build.use_binhost:
         emerge_common_opts += " --getbinpkg"
 
+    profile_lines: list[str] = []
+    if cfg.build.profile:
+        profile_lines = [
+            f"PROFILE={shlex.quote(cfg.build.profile)}",
+            'PROFILE="${PROFILE/\\/amd64\\///${GENTOO_ARCH}/}"',
+            'eselect profile set "${PROFILE}"',
+        ]
+
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
+        'case "$(uname -m)" in',
+        '  x86_64)  GENTOO_ARCH="amd64"; BINHOST_SUBARCH="x86-64" ;;',
+        '  aarch64) GENTOO_ARCH="arm64"; BINHOST_SUBARCH="arm64" ;;',
+        '  *)       GENTOO_ARCH="$(uname -m)"; BINHOST_SUBARCH="$(uname -m)" ;;',
+        "esac",
         f"mkdir -p {shlex.quote(log_dir)} /var/cache/binpkgs /etc/portage/repos.conf /etc/portage/package.accept_keywords /etc/portage/package.use /etc/portage/env /etc/portage/package.env",
         "",
         "# 1. Configure main gentoo tree, profile + mounted overlay",
         "if [[ ! -d /var/db/repos/gentoo/metadata ]]; then",
         "  emerge-webrsync -q",
         "fi",
-        *(
-            [f"eselect profile set {shlex.quote(cfg.build.profile)}"]
-            if cfg.build.profile
-            else []
-        ),
+        *profile_lines,
         f"cat > /etc/portage/repos.conf/{repo_name}.conf <<'REPO'",
         f"[{repo_name}]",
         f"location = {overlay_mount}",
@@ -122,8 +136,8 @@ def render_container_test_script(
         "  emaint binhost --fix >/dev/null 2>&1 || true",
         "fi",
         "",
-        "# Accept ~amd64 for overlay packages and ** for live ebuilds being tested",
-        f"echo '*/*::{repo_name} ~amd64' > /etc/portage/package.accept_keywords/overlay",
+        "# Accept ~arch for overlay packages and ** for live ebuilds being tested",
+        f'echo "*/*::{repo_name} ~${{GENTOO_ARCH}}" > /etc/portage/package.accept_keywords/overlay',
         f"echo '{pkg} **' >> /etc/portage/package.accept_keywords/overlay",
         "echo 'FEATURES=\"test\"' > /etc/portage/env/run-tests.conf",
         "",
@@ -159,7 +173,7 @@ def render_container_test_script(
             lines += [
                 "mkdir -p /etc/portage/profile",
                 f"echo {shlex.quote(f'-python_targets_{python_target}')} >> /etc/portage/profile/use.stable.mask",
-                f"echo {shlex.quote('dev-lang/python ~amd64')} >> /etc/portage/package.accept_keywords/overlay",
+                'echo "dev-lang/python ~${GENTOO_ARCH}" >> /etc/portage/package.accept_keywords/overlay',
                 "# Prefer single-target mode for dev-python/* + target pkg so heavy deps (pyqt6/cython/lxml)",
                 "# compile once instead of twice; auto-fallback to additive mode if dep resolution fails.",
                 "cat > /etc/portage/package.use/00-python-target <<'PYTARGET'",

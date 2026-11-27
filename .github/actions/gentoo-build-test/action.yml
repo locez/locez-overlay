@@ -32,6 +32,9 @@ runs:
     - name: Free runner disk space for large builds
       shell: bash
       run: |
+        if [ "${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]; then
+          exit 0
+        fi
         SHOULD_FREE="${{ inputs.free-disk }}"
         if [ "$SHOULD_FREE" = "auto" ]; then
           case "${{ inputs.package }}" in
@@ -50,6 +53,7 @@ runs:
       run: |
         DAY="$(date -u +%Y-%m-%d)"
         WEEK="$(date -u +%Y-W%V)"
+        ARCH="${RUNNER_ARCH:-$(uname -m)}"
         PY_TAG="${{ inputs.python-target }}"
         [ -z "$PY_TAG" ] && PY_TAG="default"
         PKG_SLUG="$(echo '${{ inputs.package }}' | tr '/:' '--')"
@@ -61,8 +65,8 @@ runs:
         echo "tree_dir=${CACHE_ROOT}/gentoo-tree" >> "$GITHUB_OUTPUT"
         echo "binpkg_dir=${CACHE_ROOT}/binpkgs" >> "$GITHUB_OUTPUT"
         echo "tree_key=gentoo-tree-v1-${DAY}" >> "$GITHUB_OUTPUT"
-        echo "binpkg_prefix=gentoo-binpkgs-v1-${WEEK}-${PY_TAG}-" >> "$GITHUB_OUTPUT"
-        echo "binpkg_save_key=gentoo-binpkgs-v1-${WEEK}-${PY_TAG}-${PKG_SLUG}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+        echo "binpkg_prefix=gentoo-binpkgs-v1-${ARCH}-${WEEK}-${PY_TAG}-" >> "$GITHUB_OUTPUT"
+        echo "binpkg_save_key=gentoo-binpkgs-v1-${ARCH}-${WEEK}-${PY_TAG}-${PKG_SLUG}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
 
     - name: Restore daily Gentoo Portage tree cache
       id: restore_tree
@@ -134,7 +138,11 @@ runs:
         set -e
 
         # Ensure runner user owns cached files created by root inside Docker
-        sudo chown -R "$(id -u):$(id -g)" "$CACHE_ROOT" || true
+        if [ "$(id -u)" -ne 0 ]; then
+          sudo -n chown -R "$(id -u):$(id -g)" "$CACHE_ROOT" 2>/dev/null \
+            || docker run --rm -v "${CACHE_ROOT}:/cache-fix" "$IMAGE" chown -R "$(id -u):$(id -g)" /cache-fix 2>/dev/null \
+            || true
+        fi
 
         if [ "${{ steps.restore_tree.outputs.cache-hit }}" != "true" ] && [ -d "${TREE_DIR}/metadata" ]; then
           echo "save_tree=true" >> "$GITHUB_OUTPUT"
