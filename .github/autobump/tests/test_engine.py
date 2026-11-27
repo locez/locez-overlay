@@ -22,6 +22,12 @@ from engine.context import _select_latest_ebuild
 from engine.notify import format_telegram_event
 from engine.plugins import STRATEGIES
 from engine.plugins.kernel import _extract_filesdir_patches
+from engine.python_compat import (
+    compute_target_compat,
+    format_python_compat,
+    parse_python_compat,
+    parse_python_targets_desc,
+)
 from engine.repair import validate_allowed_changes
 from engine.retention import ebuild_forbids_zfs, ebuild_supports_zfs, must_keep_for_zfs
 from engine.schema import ConfigError, _parse_build_spec, _parse_retention_spec, generate_nvchecker_toml, load_config
@@ -166,6 +172,32 @@ class TestGuardrailsContextAndNotify(unittest.TestCase):
             )
         )
         self.assertEqual([x["pkg"] for x in live], ["app-i18n/rime-ice", "app-misc/bilihud", "media-plugins/kotonoha"])
+
+
+class TestPythonCompatSync(unittest.TestCase):
+    def test_parse_targets_and_compute_updates(self) -> None:
+        desc = """
+        # comment
+        pypy3_12 - Build with PyPy 3.12
+        python3_12 - Build with Python 3.12
+        python3_13 - Build with Python 3.13
+        python3_14 - Build with Python 3.14
+        python3_14t - Build with Python 3.14 freethreading
+        python3_15 - Build with Python 3.15
+        """
+        active, pypys = parse_python_targets_desc(desc)
+        self.assertEqual(active, [12, 13, 14, 15])
+        self.assertEqual(pypys, {"pypy3_12"})
+
+        # Preserves intentional floor (13) while bumping max (14 -> 15)
+        parsed = parse_python_compat("PYTHON_COMPAT=( python3_{13..14} )\n")
+        self.assertEqual(parsed, ([13, 14], []))
+        new_m, new_o = compute_target_compat([13, 14], active, [], pypys)
+        self.assertEqual(format_python_compat(new_m, new_o), "PYTHON_COMPAT=( python3_{13..15} )")
+
+        # Drops EOL python3_11 and EOL pypy3_11 automatically
+        new_m2, new_o2 = compute_target_compat([11, 12, 13], [12, 13, 14, 15], ["pypy3_11", "pypy3_12"], pypys)
+        self.assertEqual(format_python_compat(new_m2, new_o2), "PYTHON_COMPAT=( python3_{12..15} pypy3_12 )")
 
 
 if __name__ == "__main__":

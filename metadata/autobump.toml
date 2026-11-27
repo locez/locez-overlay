@@ -167,6 +167,7 @@ weekly_live_test = true
 
 [packages."app-misc/bilihud"]
 detect = { type = "none" }
+policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
 smoke_test = "python3 -c 'import bilihud' && test -f /usr/share/applications/bilihud.desktop"
 weekly_live_test = true

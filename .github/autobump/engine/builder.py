@@ -46,6 +46,7 @@ def render_container_test_script(
     atom: str,
     overlay_mount: str = "/overlay",
     log_dir: str = "/build-logs",
+    python_target: str = "",
 ) -> str:
     """Generate a self-contained bash script to run inside gentoo/stage3."""
     mode = spec.build.mode
@@ -116,9 +117,22 @@ def render_container_test_script(
             f"emerge --pretend --verbose {shlex.quote(atom)}",
         ]
     elif mode in ("emerge-full", "emerge-bin"):
-        if spec.build.use:
+        target_use = list(spec.build.use)
+        if python_target:
+            target_use.append(f"python_targets_{python_target}")
+            lines.append("mkdir -p /etc/portage/profile")
             lines.append(
-                f"echo {shlex.quote(pkg + ' ' + ' '.join(spec.build.use))} > /etc/portage/package.use/target"
+                f"echo {shlex.quote(f'-python_targets_{python_target}')} >> /etc/portage/profile/use.stable.mask"
+            )
+            lines.append(
+                f"echo {shlex.quote(f'*/* PYTHON_TARGETS: {python_target}')} > /etc/portage/package.use/python-target"
+            )
+            lines.append(
+                f"echo {shlex.quote('dev-lang/python ~amd64')} >> /etc/portage/package.accept_keywords/overlay"
+            )
+        if target_use:
+            lines.append(
+                f"echo {shlex.quote(pkg + ' ' + ' '.join(target_use))} > /etc/portage/package.use/target"
             )
         if mode == "emerge-full" and spec.build.test:
             lines.append(f"echo {shlex.quote(pkg + ' run-tests.conf')} > /etc/portage/package.env/target")

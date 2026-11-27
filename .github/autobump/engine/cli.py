@@ -15,6 +15,7 @@ from .context import collect_failure_context
 from .detect import detect_updates
 from .notify import close_github_failure_issue, notify_event
 from .plugins import bump_package
+from .python_compat import apply_python_compat_sync, scan_python_compat_updates
 from .repair import run_ai_repair
 from .schema import AutomationConfig, load_config
 
@@ -88,13 +89,29 @@ def _cmd_render_build_script(cfg: AutomationConfig, args: argparse.Namespace) ->
     spec = cfg.get_package(args.pkg)
     atom = resolve_target_atom(cfg, args.pkg, live=args.live)
     script = render_container_test_script(
-        cfg, spec, atom=atom, overlay_mount=args.overlay_mount, log_dir=args.log_dir
+        cfg,
+        spec,
+        atom=atom,
+        overlay_mount=args.overlay_mount,
+        log_dir=args.log_dir,
+        python_target=args.python_target,
     )
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(script, encoding="utf-8")
     out_path.chmod(0o755)
     _emit({"pkg": args.pkg, "atom": atom, "mode": spec.build.mode, "script": str(out_path)})
+    return 0
+
+
+def _cmd_python_compat_detect(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    _emit(scan_python_compat_updates(cfg, only_pkg=args.only), args.result_file)
+    return 0
+
+
+def _cmd_python_compat_sync(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    res = apply_python_compat_sync(cfg, args.pkg)
+    _emit(res, args.result_file)
     return 0
 
 
@@ -194,8 +211,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--live", action="store_true", help="Test 9999 live ebuild")
     p.add_argument("--overlay-mount", default="/overlay")
     p.add_argument("--log-dir", default="/build-logs")
+    p.add_argument("--python-target", default="", help="Extra PYTHON_TARGETS impl to test (e.g. python3_15)")
     p.add_argument("--out", required=True, help="Output path for generated bash script")
     p.set_defaults(func=_cmd_render_build_script)
+
+    p = sub.add_parser("python-compat-detect", help="Detect packages needing PYTHON_COMPAT bump or EOL cleanup")
+    p.add_argument("--only", help="Filter to a single package")
+    p.add_argument("--result-file")
+    p.set_defaults(func=_cmd_python_compat_detect)
+
+    p = sub.add_parser("python-compat-sync", help="Update PYTHON_COMPAT in all ebuilds of a package")
+    p.add_argument("--pkg", required=True)
+    p.add_argument("--result-file")
+    p.set_defaults(func=_cmd_python_compat_sync)
 
     p = sub.add_parser("changed-packages", help="List packages modified relative to base ref")
     p.add_argument("--base", default="origin/master")

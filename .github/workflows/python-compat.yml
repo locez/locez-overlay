@@ -1,0 +1,268 @@
+name: Sync PYTHON_COMPAT Targets
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Every Monday at 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Optional single package to sync PYTHON_COMPAT (e.g. dev-python/qasync)"
+        required: false
+        default: ""
+
+concurrency:
+  group: python-compat-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      has_updates: ${{ steps.detect.outputs.has_updates }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect packages needing PYTHON_COMPAT bump or EOL cleanup
+        id: detect
+        run: |
+          ARGS="python-compat-detect --result-file /tmp/py-detect.json"
+          if [ -n "${{ inputs.package }}" ]; then
+            ARGS="$ARGS --only ${{ inputs.package }}"
+          fi
+          python3 .github/autobump/main.py $ARGS
+
+          UPDATES=$(jq -c '.updates' /tmp/py-detect.json)
+          COUNT=$(jq '.updates | length' /tmp/py-detect.json)
+          echo "matrix=$UPDATES" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  sync:
+    needs: detect
+    if: needs.detect.outputs.has_updates == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update PYTHON_COMPAT in ebuilds
+        id: sync
+        run: |
+          python3 .github/autobump/main.py python-compat-sync \
+            --pkg "${{ matrix.pkg }}" \
+            --result-file /tmp/py-sync.json
+          STATUS=$(jq -r '.status' /tmp/py-sync.json)
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Run pkgcheck gate
+        id: pkgcheck
+        if: steps.sync.outputs.status == 'updated'
+        continue-on-error: true
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ matrix.pkg }}
+
+      - name: Build & smoke-test with newest Python target in Gentoo stage3
+        id: build_test
+        if: steps.sync.outputs.status == 'updated' && steps.pkgcheck.outcome == 'success'
+        continue-on-error: true
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          python-target: ${{ matrix.max_target }}
+          log-dir: /tmp/py-build-logs
+
+      - name: Create PR and auto-merge
+        id: pr
+        if: steps.sync.outputs.status == 'updated' && steps.pkgcheck.outcome == 'success' && steps.build_test.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ matrix.pkg }}"
+          SLUG="${{ matrix.slug }}"
+          POLICY="${{ matrix.policy }}"
+          OLD_C="${{ matrix.old_compat }}"
+          NEW_C="${{ matrix.new_compat }}"
+          MAX_T="${{ matrix.max_target }}"
+          BASE=$(python3 .github/autobump/main.py config-info | jq -r '.overlay.base_branch')
+          BRANCH="python-compat/${SLUG}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "$BRANCH"
+          git add -A "$PKG"
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "${PKG}: sync PYTHON_COMPAT (${MAX_T})"
+          git push --force origin "$BRANCH"
+
+          PR_TITLE="${PKG}: sync PYTHON_COMPAT (${MAX_T})"
+          PR_BODY="Automated \`PYTHON_COMPAT\` sync for \`${PKG}\`:
+
+          - \`${OLD_C}\` → \`${NEW_C}\`
+          - \`pkgcheck scan --exit error ${PKG}\` passed
+          - Gentoo \`stage3\` build & smoke test with \`${MAX_T}\` passed
+          - Workflow run: ${RUN_URL}"
+
+          PR_NUM=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUM" ]; then
+            gh pr edit "$PR_NUM" --title "$PR_TITLE" --body "$PR_BODY"
+            PR_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUM}"
+          else
+            PR_URL=$(gh pr create --base "$BASE" --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY")
+            PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          fi
+
+          if [ "$POLICY" = "auto-merge" ]; then
+            MERGED=false
+            for attempt in 1 2 3 4 5; do
+              if gh pr merge "$PR_NUM" --squash --delete-branch; then
+                MERGED=true
+                break
+              fi
+              sleep $(( attempt * 3 ))
+              git fetch origin "$BASE"
+              git rebase "origin/$BASE"
+              git push --force origin "$BRANCH"
+            done
+            if [ "$MERGED" != "true" ]; then
+              exit 1
+            fi
+            python3 .github/autobump/main.py close-issue \
+              --pkg "$PKG" \
+              --comment "PYTHON_COMPAT synced and auto-merged via PR #${PR_NUM}."
+          fi
+
+      - name: Notify & optionally trigger AI repair on failure
+        id: on_fail
+        if: steps.sync.outputs.status == 'updated' && (steps.pkgcheck.outcome != 'success' || steps.build_test.outcome != 'success' || steps.pr.outcome != 'success')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ matrix.pkg }}"
+          MAX_T="${{ matrix.max_target }}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          if [ "${{ steps.pkgcheck.outcome }}" != "success" ]; then
+            STAGE="pkgcheck"
+            SUMMARY="PYTHON_COMPAT sync (${MAX_T}) failed pkgcheck for ${PKG}"
+          elif [ "${{ steps.build_test.outcome }}" != "success" ]; then
+            STAGE="build-test"
+            SUMMARY="PYTHON_COMPAT sync (${MAX_T}) failed Gentoo stage3 build/smoke test for ${PKG}"
+          else
+            STAGE="pr-merge"
+            SUMMARY="PYTHON_COMPAT sync (${MAX_T}) failed to create/merge PR for ${PKG}"
+          fi
+
+          LOG_ARGS=()
+          [ -f /tmp/py-build-logs/console.log ] && LOG_ARGS+=(--log "console=/tmp/py-build-logs/console.log")
+          [ -f /tmp/py-build-logs/build.log ] && LOG_ARGS+=(--log "portage_build=/tmp/py-build-logs/build.log")
+
+          python3 .github/autobump/main.py collect-context \
+            --pkg "$PKG" \
+            --stage "$STAGE" \
+            --local-ver "${{ matrix.old_compat }}" \
+            --target-ver "${{ matrix.new_compat }}" \
+            --summary "$SUMMARY" \
+            --run-url "$RUN_URL" \
+            "${LOG_ARGS[@]}" \
+            --out /tmp/failure-context.json
+
+          python3 .github/autobump/main.py notify \
+            --event failed \
+            --pkg "$PKG" \
+            --title "PYTHON_COMPAT sync ${MAX_T} (${STAGE} failed)" \
+            --detail "$SUMMARY" \
+            --run-url "$RUN_URL"
+
+      - name: Attempt pluggable AI repair (Draft PR only)
+        id: ai_run
+        if: steps.on_fail.outcome == 'success'
+        continue-on-error: true
+        env:
+          AI_REPAIR_CMD: ${{ secrets.AI_REPAIR_CMD }}
+          AI_REPAIR_API_KEY: ${{ secrets.AI_REPAIR_API_KEY }}
+        run: |
+          if [ -z "${AI_REPAIR_CMD:-}" ]; then
+            echo "status=disabled" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 .github/autobump/main.py ai-repair \
+            --context /tmp/failure-context.json \
+            --result-file /tmp/ai-result.json || true
+          echo "status=$(jq -r '.status // "failed"' /tmp/ai-result.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify AI patch & open Draft PR
+        if: steps.ai_run.outputs.status == 'patched'
+        uses: pkgcore/pkgcheck-action@v1
+        with:
+          args: --exit error ${{ matrix.pkg }}
+
+      - name: Verify AI patch in Gentoo stage3
+        if: steps.ai_run.outputs.status == 'patched'
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          python-target: ${{ matrix.max_target }}
+          log-dir: /tmp/ai-py-build-logs
+
+      - name: Push AI Draft PR & notify
+        if: steps.ai_run.outputs.status == 'patched'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ matrix.pkg }}"
+          SLUG="${{ matrix.slug }}"
+          MAX_T="${{ matrix.max_target }}"
+          BASE=$(python3 .github/autobump/main.py config-info | jq -r '.overlay.base_branch')
+          BRANCH="ai-fix/${SLUG}-pycompat"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A "$PKG"
+          git commit -m "${PKG}: AI-assisted PYTHON_COMPAT fix (${MAX_T})"
+          git push --force origin "$BRANCH"
+
+          PR_URL=$(gh pr create --draft --base "$BASE" --head "$BRANCH" \
+            --title "[AI Draft] ${PKG}: fix PYTHON_COMPAT (${MAX_T})" \
+            --body "AI-assisted \`PYTHON_COMPAT\` repair for \`${PKG}\` (\`${MAX_T}\`).
+          - Manual review required
+          - Workflow run: ${RUN_URL}")
+
+          python3 .github/autobump/main.py notify \
+            --event ai_draft_pr \
+            --pkg "$PKG" \
+            --title "AI Draft PR ready for PYTHON_COMPAT ${MAX_T}" \
+            --pr-url "$PR_URL" \
+            --run-url "$RUN_URL"
+
+      - name: Mark failed job
+        if: steps.on_fail.outcome == 'success'
+        run: exit 1

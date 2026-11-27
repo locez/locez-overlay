@@ -9,6 +9,10 @@ inputs:
     description: "Build 9999 live ebuild"
     required: false
     default: "false"
+  python-target:
+    description: "Optional extra PYTHON_TARGETS impl to test (e.g. python3_15)"
+    required: false
+    default: ""
   log-dir:
     description: "Host directory where build logs and console.log are written"
     required: false
@@ -47,6 +51,10 @@ runs:
         if [ "${{ inputs.live }}" = "true" ]; then
           LIVE_FLAG="--live"
         fi
+        PY_ARGS=()
+        if [ -n "${{ inputs.python-target }}" ]; then
+          PY_ARGS=(--python-target "${{ inputs.python-target }}")
+        fi
 
         SCRIPT_PATH="$(mktemp /tmp/gentoo-build-test.XXXXXX.sh)"
         trap 'rm -f "$SCRIPT_PATH"' EXIT
@@ -54,6 +62,7 @@ runs:
         python3 .github/autobump/main.py render-build-script \
           --pkg "${{ inputs.package }}" \
           $LIVE_FLAG \
+          "${PY_ARGS[@]}" \
           --overlay-mount /overlay \
           --log-dir /build-logs \
           --out "$SCRIPT_PATH"
