@@ -71,7 +71,9 @@ def render_container_test_script(
 
     emerge_common_opts = "--verbose --quiet-build=y --oneshot"
     if cfg.build.use_binhost:
-        emerge_common_opts += f" --getbinpkg --binpkg-respect-use=y --usepkg-exclude={shlex.quote(pkg)}"
+        # Note: omit explicit --binpkg-respect-use=y (already default for --getbinpkg);
+        # passing it explicitly causes Portage to disable --autounmask-use.
+        emerge_common_opts += f" --getbinpkg --usepkg-exclude={shlex.quote(pkg)}"
 
     lines = [
         "#!/usr/bin/env bash",
@@ -98,6 +100,7 @@ def render_container_test_script(
         "# 2. Global CI Portage settings (accept keywords/licenses & direct logs to mounted log_dir)",
         "cat >> /etc/portage/make.conf <<'MAKECONF'",
         'ACCEPT_LICENSE="*"',
+        'CONFIG_PROTECT="-*"',
         'FEATURES="${FEATURES} -sandbox -usersandbox -ipc-sandbox -network-sandbox -pid-sandbox qa-unresolved-soname-deps"',
         f"PORTAGE_LOGDIR={shlex.quote(log_dir)}",
         "MAKECONF",
@@ -143,7 +146,7 @@ def render_container_test_script(
             lines.append(f"echo {shlex.quote(pkg + ' run-tests.conf')} > /etc/portage/package.env/target")
         lines += [
             f"echo '=== [{mode}] Installing dependencies & building {atom} ==='",
-            f"emerge {emerge_common_opts} --autounmask-write=y --autounmask-continue=y {shlex.quote(atom)}",
+            f"emerge {emerge_common_opts} --autounmask=y --autounmask-use=y --autounmask-write=y --autounmask-continue=y {shlex.quote(atom)}",
         ]
         lines += _render_smoke_block(spec, overlay_mount, emerge_common_opts)
     elif mode == "kernel-sources":
@@ -152,7 +155,7 @@ def render_container_test_script(
             lines += [
                 f"echo '=== [kernel-sources set #{idx}] {atom} USE=\"{flag_str}\" ==='",
                 f"echo {shlex.quote(pkg + ' ' + flag_str)} > /etc/portage/package.use/target",
-                f"emerge {emerge_common_opts} --autounmask-write=y --autounmask-continue=y {shlex.quote(atom)}",
+                f"emerge {emerge_common_opts} --autounmask=y --autounmask-use=y --autounmask-write=y --autounmask-continue=y {shlex.quote(atom)}",
             ]
             lines += _render_smoke_block(spec, overlay_mount, emerge_common_opts)
             if spec.build.check_kconfig:
