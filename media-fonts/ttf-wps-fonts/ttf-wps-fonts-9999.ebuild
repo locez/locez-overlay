@@ -22,8 +22,3 @@ pkg_postinst() {
 	unset FONT_CONF # override default message
 	font_pkg_postinst
 }
-
-src_install() {
-	insinto "/usr/share/fonts/${FONT_PN}"
-	doins *.{ttf,TTF}
-}

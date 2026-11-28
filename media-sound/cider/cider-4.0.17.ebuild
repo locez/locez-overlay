@@ -55,14 +55,14 @@ RDEPEND="
 
 # Silence QA warnings about the bundled ELF files.
 QA_PREBUILT="
-	/opt/cider/Cider
-	/opt/cider/chrome-sandbox
-	/opt/cider/chrome_crashpad_handler
-	/opt/cider/libEGL.so
-	/opt/cider/libGLESv2.so
-	/opt/cider/libffmpeg.so
-	/opt/cider/libvk_swiftshader.so
-	/opt/cider/libvulkan.so.1
+	opt/cider/Cider
+	opt/cider/chrome-sandbox
+	opt/cider/chrome_crashpad_handler
+	opt/cider/libEGL.so
+	opt/cider/libGLESv2.so
+	opt/cider/libffmpeg.so
+	opt/cider/libvk_swiftshader.so
+	opt/cider/libvulkan.so.1
 "
 
 src_unpack() {
@@ -78,12 +78,12 @@ src_install() {
 	insinto /opt
 	doins -r usr/lib/cider
 
-	dosym ../../opt/cider/Cider /usr/bin/cider
+	dosym -r /opt/cider/Cider /usr/bin/cider
 
 	fperms +x /opt/cider/Cider
 
 	# Chrome Sandbox (Requires SUID)
-	if [[ -f "${D}/opt/cider/chrome-sandbox" ]]; then
+	if [[ -f "${ED}/opt/cider/chrome-sandbox" ]]; then
 		fperms 4755 /opt/cider/chrome-sandbox
 	fi
 }

@@ -27,9 +27,9 @@ SLOT="0"
 IUSE="embedded-lyrics"
 
 DEPEND="
-	dev-libs/wayland
+	dev-libs/wayland:=
 	dev-qt/qtbase:6=[gui,wayland,widgets]
-	kde-plasma/layer-shell-qt:6
+	kde-plasma/layer-shell-qt:6=
 "
 RDEPEND="
 	${DEPEND}

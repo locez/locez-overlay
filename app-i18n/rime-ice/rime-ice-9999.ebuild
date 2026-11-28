@@ -11,7 +11,6 @@ EGIT_REPO_URI="https://github.com/iDvel/rime-ice.git"
 
 LICENSE="GPL-3"
 SLOT="0"
-KEYWORDS=""
 
 # IUSE Description:
 # base    : Core Chinese dictionaries (8105/41448)
@@ -29,16 +28,11 @@ RDEPEND="
 			app-i18n/librime-lua[${LUA_SINGLE_USEDEP}]
 	)
 "
-DEPEND="${RDEPEND}"
 
 INSTALL_DIR="/usr/share/rime-data"
 
 pkg_setup() {
 	use lua && lua-single_pkg_setup
-}
-
-src_unpack() {
-	git-r3_src_unpack
 }
 
 src_prepare() {
@@ -111,18 +105,16 @@ src_prepare() {
 		rm -rf lua || die
 		sed -i '/lua_/d' rime_ice.schema.yaml || die
 	fi
+
+	# Keep LICENSE out of rime-data (covered by LICENSE="GPL-3").
+	rm -f LICENSE || die
 }
 
 src_install() {
-	# Install documentation to /usr/share/doc/...
-	dodoc README.md LICENSE
+	dodoc README.md
+	rm -f README.md || die
 
-	# Install remaining data files to /usr/share/rime-data
 	insinto "${INSTALL_DIR}"
-
-	# Clean up docs from the source dir to avoid duplication in rime-data
-	rm -f README.md LICENSE
-
 	doins -r .
 }
 

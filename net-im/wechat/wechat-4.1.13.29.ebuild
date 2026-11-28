@@ -70,7 +70,7 @@ src_prepare() {
 	default
 
 	if ! use jack; then
-		rm -v opt/wechat/vlc_plugins/audio_output/libjack_plugin.so
+		rm -v opt/wechat/vlc_plugins/audio_output/libjack_plugin.so || die
 	fi
 
 	sed \
@@ -82,7 +82,7 @@ src_prepare() {
 
 src_install() {
 	dodir /opt/wechat
-	cp -r opt/wechat/* "${D}/opt/wechat" || die
+	cp -a opt/wechat/. "${ED}/opt/wechat/" || die
 
 	if use bwrap; then
 		newbin "${FILESDIR}/bwrap.sh" wechat

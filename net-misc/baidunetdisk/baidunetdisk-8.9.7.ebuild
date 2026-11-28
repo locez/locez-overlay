@@ -57,8 +57,8 @@ QA_PREBUILT="*"
 src_install() {
 	insinto /opt
 	doins -r opt/"${PN}"
-	find "${D}" -type d -name "node_gyp_bins" -exec rm -rf {} + 2>/dev/null || true
-	find "${D}" -type d -empty -delete 2>/dev/null || true
+	find "${ED}" -type d -name "node_gyp_bins" -exec rm -rf {} + 2>/dev/null || true
+	find "${ED}" -type d -empty -delete 2>/dev/null || true
 
 	fperms +x /opt/"${PN}"/"${PN}"
 	fperms +x /opt/"${PN}"/baidunetdiskhost

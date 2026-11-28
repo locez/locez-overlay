@@ -19,11 +19,6 @@ RDEPEND="
 		dev-python/pyqt6[${PYTHON_USEDEP}]
 		dev-python/pyside[${PYTHON_USEDEP}]
 	)
-
-"
-
-DEPEND="
-	dev-python/setuptools[${PYTHON_USEDEP}]
 "
 
 src_prepare() {

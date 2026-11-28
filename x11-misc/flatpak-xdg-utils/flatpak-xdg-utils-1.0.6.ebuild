@@ -13,11 +13,14 @@ LICENSE="LGPL-2.1+"
 SLOT="0"
 RDEPEND="dev-libs/glib:2"
 DEPEND="${RDEPEND}"
-BDEPEND="${RDEPEND}"
+BDEPEND="virtual/pkgconfig"
 KEYWORDS="~amd64 ~arm64 ~loong"
 
 src_configure() {
-	meson_src_configure --bindir=/usr/lib/"${PN}"
+	local emesonargs=(
+		--bindir="/usr/lib/${PN}"
+	)
+	meson_src_configure
 }
 
 src_install() {

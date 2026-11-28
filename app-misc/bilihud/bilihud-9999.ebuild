@@ -5,9 +5,9 @@ EAPI=8
 
 DISTUTILS_EXT=1
 DISTUTILS_USE_PEP517=scikit-build-core
-PYTHON_COMPAT=( python3_{13..14} )
+PYTHON_COMPAT=( python3_{13..15} )
 
-inherit distutils-r1 desktop git-r3
+inherit desktop distutils-r1 git-r3 xdg
 
 DESCRIPTION="B站弹幕阅读器 - 一个可以在游戏全屏时显示弹幕的Qt应用程序"
 HOMEPAGE="https://github.com/locez/bilihud"

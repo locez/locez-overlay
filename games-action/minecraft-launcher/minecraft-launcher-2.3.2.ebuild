@@ -3,13 +3,13 @@
 
 EAPI=8
 
-inherit desktop xdg-utils
+inherit desktop xdg
 
 DESCRIPTION="Official Minecraft Launcher"
 HOMEPAGE="https://www.minecraft.net/"
 SRC_URI="
 	https://launcher.mojang.com/download/Minecraft.tar.gz -> ${P}.tar.gz
-	https://launcher.mojang.com/download/minecraft-launcher.svg
+	https://launcher.mojang.com/download/minecraft-launcher.svg -> ${P}.svg
 "
 S="${WORKDIR}/minecraft-launcher"
 
@@ -35,7 +35,7 @@ QA_PREBUILT="*"
 src_install() {
 	insinto /opt/minecraft-launcher
 	doins -r *
-	launcher=/opt/minecraft-launcher/minecraft-launcher
+	local launcher=/opt/minecraft-launcher/minecraft-launcher
 	fperms +x "${launcher}"
 
 	if use bwrap; then
@@ -44,7 +44,7 @@ src_install() {
 		launcher=/opt/minecraft-launcher/minecraft-launcher-wrapper
 	fi
 
-	newicon "${DISTDIR}/minecraft-launcher.svg" "minecraft-launcher.svg"
+	newicon "${DISTDIR}/${P}.svg" "minecraft-launcher.svg"
 	make_desktop_entry \
 		"${launcher}" \
 		"Minecraft Launcher" \
@@ -53,12 +53,8 @@ src_install() {
 }
 
 pkg_postinst() {
-	xdg_icon_cache_update
+	xdg_pkg_postinst
 	elog "before launch："
 	elog "1. make sure install a video driver（nvidia-drivers or mesa）"
 	elog "2. game data store in ~/.minecraft"
-}
-
-pkg_postrm() {
-	xdg_icon_cache_update
 }

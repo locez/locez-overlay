@@ -20,30 +20,21 @@ RESTRICT="strip mirror bindist"
 
 QA_PREBUILT="opt/bytedance/feishu/*"
 
-DEPEND="
-	app-misc/ca-certificates
-	dev-libs/nss
-	media-libs/mesa
-	media-libs/alsa-lib
-	media-libs/libpulse
-	x11-libs/gtk+:3[cups,X]
-	x11-libs/libdrm
-	x11-libs/libxcb
-	x11-libs/libXext
-	x11-libs/libxkbcommon
-	x11-misc/xdg-utils
-"
 BDEPEND="
 	dev-util/patchelf
 "
 RDEPEND="
-	${DEPEND}
 	app-accessibility/at-spi2-core:2
+	app-misc/ca-certificates
 	dev-libs/expat
 	dev-libs/glib:2
 	dev-libs/libgcrypt
 	dev-libs/nspr
+	dev-libs/nss
+	media-libs/alsa-lib
 	media-libs/libglvnd
+	media-libs/libpulse
+	media-libs/mesa
 	net-libs/gnutls
 	net-print/cups
 	sys-apps/dbus
@@ -51,23 +42,27 @@ RDEPEND="
 	virtual/zlib
 	x11-libs/cairo
 	x11-libs/gdk-pixbuf:2
+	x11-libs/gtk+:3[cups,X]
 	x11-libs/libX11
 	x11-libs/libXcomposite
 	x11-libs/libXdamage
+	x11-libs/libXext
 	x11-libs/libXfixes
 	x11-libs/libXrandr
 	x11-libs/libXtst
+	x11-libs/libdrm
+	x11-libs/libxcb
+	x11-libs/libxkbcommon
 	x11-libs/pango
 	x11-libs/pixman
+	x11-misc/xdg-utils
 "
 
 src_prepare() {
 	default
 	unpacker "${S}/usr/share/man/man1/bytedance-feishu-stable.1.gz"
 	unpacker "${S}/usr/share/doc/bytedance-feishu-stable/changelog.gz"
-}
 
-src_install() {
 	local rpath_libs=( libbv-screen-capture.so libbyteview-bytertc.so )
 	if use arm64; then
 		# upstream ships an x86-64 build of this library in the arm64 package, so
@@ -82,6 +77,9 @@ src_install() {
 	for f in "${rpath_libs[@]}"; do
 		patchelf --set-rpath '$ORIGIN' "${S}/opt/bytedance/feishu/${f}" || die "patchelf failed on ${f}"
 	done
+}
+
+src_install() {
 	insinto "/"
 	doins -r "${S}/opt/"
 	dosym -r /opt/bytedance/feishu/bytedance-feishu /usr/bin/bytedance-feishu-stable

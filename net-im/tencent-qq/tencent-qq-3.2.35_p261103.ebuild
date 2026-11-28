@@ -3,7 +3,7 @@
 
 EAPI=8
 
-inherit unpacker xdg
+inherit desktop unpacker xdg
 
 BUILD="54395"
 
@@ -80,30 +80,37 @@ RDEPEND="
 
 QA_PREBUILT="opt/QQ/*"
 
-src_unpack() {
-	:
+src_prepare() {
+	default
+
+	rm -rv usr/share/doc || die
+
+	if use system-fdk-aac; then
+		rm -v opt/QQ/resources/app/avsdk/libfdk-aac.so || die
+	fi
+	if use system-libssh2; then
+		rm -v opt/QQ/resources/app/libssh2.so.1 opt/QQ/resources/app/avsdk/bugly/libssh2.so.1 || die
+	fi
+	if use system-openh264; then
+		rm -v opt/QQ/resources/app/avsdk/libopenh264.so || die
+	fi
+	if use system-zlib; then
+		rm -v opt/QQ/libz.so.1 || die
+	fi
+
+	sed -i \
+		-e 's:^Exec=.*$:Exec=/usr/bin/qq %U:' \
+		-e 's:^Icon=.*$:Icon=qq:' \
+		usr/share/applications/qq.desktop || die
 }
 
 src_install() {
-	dodir /
-	cd "${D}" || die
+	dodir /opt
+	cp -a opt/QQ "${ED}/opt/" || die
 
-	unpacker "${DISTDIR}/${P}_${ARCH}.deb"
-
-	rm -rv "${D}/usr/share/doc" || die
-
-	if use system-fdk-aac; then
-		rm -v "${D}/opt/QQ/resources/app/avsdk/libfdk-aac.so" || die
-	fi
-	if use system-libssh2; then
-		rm -v "${D}/opt/QQ/resources/app/libssh2.so.1" "${D}/opt/QQ/resources/app/avsdk/bugly/libssh2.so.1" || die
-	fi
-	if use system-openh264; then
-		rm -v "${D}/opt/QQ/resources/app/avsdk/libopenh264.so" || die
-	fi
-	if use system-zlib; then
-		rm -v "${D}/opt/QQ/libz.so.1" || die
-	fi
+	insinto /usr/share
+	doins -r usr/share/icons
+	domenu usr/share/applications/qq.desktop
 
 	if use bwrap; then
 		newbin "${FILESDIR}/bwrap.sh" qq
@@ -113,13 +120,11 @@ src_install() {
 		fperms +x /opt/QQ/workarounds/vercmp.sh
 
 		sed -i "s|__BASE_VER__|${PV%_*}-${BUILD}|g;s|__CURRENT_VER__|${PV%_*}-${BUILD}|g;s|__BUILD_VER__|${BUILD}|g" \
-			"${D}/opt/QQ/workarounds/config.json" \
-			"${D}/usr/bin/qq" || die
+			"${ED}/opt/QQ/workarounds/config.json" \
+			"${ED}/usr/bin/qq" || die
 	else
 		newbin "${FILESDIR}/qq.sh" qq
 	fi
-
-	sed -i 's:^Exec=.*$:Exec=/usr/bin/qq %U:g;s:^Icon=.*$:Icon=qq:g' "${D}/usr/share/applications/qq.desktop" || die
 }
 
 pkg_postinst() {

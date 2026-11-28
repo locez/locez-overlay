@@ -48,16 +48,16 @@ src_prepare() {
 	for file in protonfixes/files/bin/pgrep protonfixes/files/bin/pkill; do
 		patchelf --set-rpath '$ORIGIN/../lib/x86_64-linux-gnu' "${file}" || die
 	done
-}
 
-src_install() {
 	sed -i \
 		-e "s|\"install_path\" \"\.\"|\"install_path\" \"${OPT_DIR}\"|" \
 		compatibilitytool.vdf || die
+}
 
+src_install() {
 	dodir "${OPT_DIR}"
 	dodir "${COMPAT_DIR%/*}"
 	cp -a ./. "${ED}${OPT_DIR}/" || die
 	# Keep the tool root symlinked so Lutris and UMU resolve it to /opt.
-	dosym -r "${OPT_DIR}" "${COMPAT_DIR}" || die
+	dosym -r "${OPT_DIR}" "${COMPAT_DIR}"
 }

@@ -25,13 +25,16 @@ RDEPEND="
 	media-libs/tiff:=
 	dev-libs/glib:2
 	x11-libs/cairo
-	x11-libs/gdk-pixbuf
+	x11-libs/gdk-pixbuf:2
 	dev-libs/libxml2:=
 	dev-db/sqlite:3
 	media-libs/libdicom
-	doc? ( app-text/doxygen )
 "
 DEPEND="${RDEPEND}"
+BDEPEND="
+	virtual/pkgconfig
+	doc? ( app-text/doxygen )
+"
 
 src_configure() {
 	# Disable test, its requires download big test resource from the Internet.

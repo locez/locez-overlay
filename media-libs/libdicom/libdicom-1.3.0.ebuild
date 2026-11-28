@@ -16,10 +16,12 @@ KEYWORDS="~amd64 ~arm64 ~loong"
 IUSE="test"
 RESTRICT="!test? ( test )"
 
-BDEPEND="
+DEPEND="
 	dev-libs/uthash
-	virtual/pkgconfig
 	test? ( dev-libs/check )
+"
+BDEPEND="
+	virtual/pkgconfig
 "
 
 src_configure() {
