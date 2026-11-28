@@ -8,7 +8,7 @@ inherit desktop unpacker xdg
 BUILD="54395"
 
 qq_src_uri() {
-	printf "${1}? ( https://dlqq.akkariin.moe/"
+	printf "${1}? ( https://overlay.locez.com/"
 	printf "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_${PV/p/}_${2:-$1}_01.deb"
 	printf " -> ${P}_${1}.deb )"
 }

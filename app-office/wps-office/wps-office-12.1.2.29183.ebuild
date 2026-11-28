@@ -10,7 +10,7 @@ HOMEPAGE="https://www.wps.cn/product/wpslinux/"
 
 MY_BUILD_ID="806791"
 MY_URI="https://wps-linux-personal.wpscdn.cn/wps/download/ep/Linux2023/${PV##*.}"
-SRC_URI="https://wps302.wcbing.top/${MY_URI}/${PN}_${PV}.AK.preread.sw.Personal_${MY_BUILD_ID}_amd64.deb
+SRC_URI="https://overlay.locez.com/${MY_URI}/${PN}_${PV}.AK.preread.sw.Personal_${MY_BUILD_ID}_amd64.deb
 	-> ${PN}_${PV}_amd64.deb"
 
 S="${WORKDIR}"
