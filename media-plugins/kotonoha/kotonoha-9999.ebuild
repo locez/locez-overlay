@@ -9,18 +9,11 @@ PYTHON_COMPAT=( python3_{13..14} )
 # the lyrics cache is a sqlite3 database
 PYTHON_REQ_USE="sqlite"
 
-inherit desktop distutils-r1 xdg
+inherit desktop distutils-r1 git-r3 xdg
 
 DESCRIPTION="Wayland lyrics overlay for MPRIS-compatible media players"
 HOMEPAGE="https://github.com/locez/kotonoha"
-
-if [[ "${PV}" == 9999 ]]; then
-	inherit git-r3
-	EGIT_REPO_URI="https://github.com/locez/kotonoha.git"
-else
-	SRC_URI="https://github.com/locez/kotonoha/archive/refs/tags/v${PV}.tar.gz -> ${P}.tar.gz"
-	KEYWORDS="~amd64"
-fi
+EGIT_REPO_URI="https://github.com/locez/kotonoha.git"
 
 LICENSE="ISC LGPL-2.1+ MIT"
 SLOT="0"

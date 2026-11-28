@@ -87,17 +87,6 @@ policy = "auto-merge"
 build = { mode = "emerge-full", test = false }
 smoke_test = "pkg-config --exists openslide && pkg-config --libs openslide"
 
-[packages."media-plugins/kotonoha"]
-detect = { type = "nvchecker", source = "github", github = "locez/kotonoha", use_max_tag = true, prefix = "v" }
-strategy = "github-release"
-url_template = "https://github.com/locez/kotonoha/archive/refs/tags/v{ver}.tar.gz"
-dist_template = "kotonoha-{ver}.tar.gz"
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-full", test = true }
-smoke_test = "python3 -c 'import kotonoha' && test -f /usr/share/applications/kotonoha.desktop"
-weekly_live_test = true
-
 [packages."media-sound/cider"]
 detect = { type = "nvchecker", source = "regex", url = "https://repo.cider.sh/apt/pool/main/", regex = 'cider-v([0-9]+(?:\.[0-9]+)+)-linux-x64\.deb' }
 strategy = "cider"
@@ -163,7 +152,7 @@ smoke_test = "test -x /usr/bin/flatpak-spawn && test -x /usr/lib/flatpak-xdg-uti
 
 [packages."app-i18n/rime-ice"]
 detect = { type = "none" }
-build = { mode = "emerge-full", use = ["base", "english", "opencc", "tencent", "lua"], test = false }
+build = { mode = "emerge-full", use = ["base", "english", "opencc", "tencent", "-lua"], test = false }
 smoke_test = "test -f /usr/share/rime-data/rime_ice.schema.yaml"
 weekly_live_test = true
 
@@ -172,6 +161,13 @@ detect = { type = "none" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
 smoke_test = "python3 -c 'import bilihud' && test -f /usr/share/applications/bilihud.desktop"
+weekly_live_test = true
+
+[packages."media-plugins/kotonoha"]
+detect = { type = "none" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = true }
+smoke_test = "python3 -c 'import kotonoha' && test -f /usr/share/applications/kotonoha.desktop"
 weekly_live_test = true
 
 [packages."media-sound/qqmusic"]

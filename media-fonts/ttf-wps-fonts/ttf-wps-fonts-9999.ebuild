@@ -3,6 +3,9 @@
 
 EAPI=8
 
+FONT_PN="wps-fonts"
+FONT_SUFFIX="ttf TTF"
+
 inherit font git-r3
 
 DESCRIPTION="Symbol fonts required by wps-office"
@@ -11,9 +14,6 @@ EGIT_REPO_URI="https://github.com/dv-anomaly/ttf-wps-fonts.git"
 
 LICENSE="all-rights-reserved"
 SLOT="0"
-
-FONT_SUFFIX="ttf TTF"
-FONT_PN="wps-fonts"
 
 # Only installs fonts
 RESTRICT="binchecks bindist mirror strip test"
