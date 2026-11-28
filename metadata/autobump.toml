@@ -185,7 +185,10 @@ smoke_test = "python3 -c 'import kotonoha' && test -f /usr/share/applications/ko
 weekly_live_test = true
 
 [packages."media-sound/qqmusic"]
-detect = { type = "none" }
+detect = { type = "nvchecker", source = "regex", url = "https://y.qq.com/download/download.html", regex = 'qqmusic_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
+strategy = "qqmusic"
+retention = { type = "replace" }
+policy = "auto-merge"
 build = { mode = "emerge-bin" }
 smoke_test = "test -x /usr/bin/qqmusic && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/qqmusic/qqmusic"
 

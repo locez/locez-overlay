@@ -23,6 +23,8 @@ jobs:
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
       has_updates: ${{ steps.detect.outputs.has_updates }}
+      arm64_matrix: ${{ steps.detect.outputs.arm64_matrix }}
+      has_arm64_updates: ${{ steps.detect.outputs.has_arm64_updates }}
 
     steps:
       - uses: actions/checkout@v7
@@ -34,7 +36,7 @@ jobs:
       - name: Install nvchecker in isolated venv
         run: |
           python3 -m venv "${{ runner.temp }}/nv-venv"
-          "${{ runner.temp }}/nv-venv/bin/pip" install --quiet --upgrade nvchecker
+          "${{ runner.temp }}/nv-venv/bin/pip" install --quiet --upgrade "nvchecker>=2.15,<3"
           echo "${{ runner.temp }}/nv-venv/bin" >> "$GITHUB_PATH"
 
       - name: Detect outdated packages & ZFS unlock signals
@@ -56,11 +58,19 @@ jobs:
 
           UPDATES=$(jq -c '.updates' "${{ runner.temp }}/detect.json")
           COUNT=$(jq '.updates | length' "${{ runner.temp }}/detect.json")
+          ARM64_UPDATES=$(jq -c '[.updates[] | select(.arm64 == true)]' "${{ runner.temp }}/detect.json")
+          ARM64_COUNT=$(echo "$ARM64_UPDATES" | jq 'length')
           echo "matrix=$UPDATES" >> "$GITHUB_OUTPUT"
+          echo "arm64_matrix=$ARM64_UPDATES" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
             echo "has_updates=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_updates=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$ARM64_COUNT" -gt 0 ]; then
+            echo "has_arm64_updates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_arm64_updates=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Notify on detection errors or ZFS kernel unlock
@@ -224,7 +234,20 @@ jobs:
             PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
           fi
 
-          if [ "$POLICY" = "auto-merge" ]; then
+          if [ "${{ matrix.arm64 }}" = "true" ]; then
+            echo "Deferring auto-merge for $PKG until ARM64 verification succeeds."
+            jq -n \
+              --arg pr_num "$PR_NUM" \
+              --arg pr_url "$PR_URL" \
+              --arg branch "$BRANCH" \
+              --arg base "$BASE" \
+              --arg local_ver "$LOCAL_VER" \
+              --arg new_ver "$NEW_VER" \
+              --arg policy "$POLICY" \
+              '{pr_num: $pr_num, pr_url: $pr_url, branch: $branch, base: $base, local_ver: $local_ver, new_ver: $new_ver, policy: $policy}' \
+              > "${{ runner.temp }}/arm64-ready.json"
+            echo "arm64_ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$POLICY" = "auto-merge" ]; then
             MERGED=false
             for attempt in 1 2 3 4 5; do
               if gh pr merge "$PR_NUM" --squash --delete-branch; then
@@ -241,16 +264,24 @@ jobs:
               echo "Failed to auto-merge PR #$PR_NUM after 5 attempts" >&2
               exit 1
             fi
-            python3 .github/autobump/main.py close-issue \
+            PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py close-issue \
               --pkg "$PKG" \
               --comment "Resolved and auto-merged via PR #${PR_NUM} (\`${NEW_VER}\`)."
-            python3 .github/autobump/main.py notify \
+            PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
               --event merged \
               --pkg "$PKG" \
               --title "${LOCAL_VER} -> ${NEW_VER} merged" \
               --pr-url "$PR_URL" \
               --run-url "$RUN_URL"
           fi
+
+      - name: Upload ARM64 handoff metadata
+        if: steps.pr.outputs.arm64_ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-ready-${{ matrix.slug }}
+          path: ${{ runner.temp }}/arm64-ready.json
+          retention-days: 1
 
       - name: Collect FailureContext & notify (GitHub + Telegram)
         id: on_fail
@@ -392,3 +423,137 @@ jobs:
       - name: Mark failed job
         if: steps.on_fail.outcome == 'success'
         run: exit 1
+
+  verify-arm64-and-merge:
+    name: verify-arm64 (${{ matrix.pkg }})
+    needs: [detect, bump]
+    if: always() && needs.detect.outputs.has_arm64_updates == 'true'
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.arm64_matrix) }}
+
+    steps:
+      - name: Download ARM64 handoff metadata from x64 bump job
+        id: handoff
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: arm64-ready-${{ matrix.slug }}
+          path: ${{ runner.temp }}/arm64-handoff
+
+      - name: Parse ARM64 handoff metadata
+        id: meta
+        if: steps.handoff.outcome == 'success'
+        run: |
+          FILE="${{ runner.temp }}/arm64-handoff/arm64-ready.json"
+          if [ ! -f "$FILE" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "pr_num=$(jq -r '.pr_num' "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$(jq -r '.pr_url' "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "branch=$(jq -r '.branch' "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "base=$(jq -r '.base' "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "local_ver=$(jq -r '.local_ver' "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "new_ver=$(jq -r '.new_ver' "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "policy=$(jq -r '.policy' "$FILE")" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout bumped PR branch on ARM64 runner
+        if: steps.meta.outputs.ready == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.meta.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Verify bumped package on Gentoo stage3 (ARM64)
+        id: arm64_build
+        if: steps.meta.outputs.ready == 'true'
+        continue-on-error: true
+        uses: ./.github/actions/gentoo-build-test
+        with:
+          package: ${{ matrix.pkg }}
+          log-dir: ${{ runner.temp }}/arm64-build-logs
+
+      - name: Auto-merge PR after both X64 and ARM64 pass
+        if: steps.meta.outputs.ready == 'true' && steps.arm64_build.outcome == 'success' && steps.meta.outputs.policy == 'auto-merge'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ matrix.pkg }}"
+          PR_NUM="${{ steps.meta.outputs.pr_num }}"
+          PR_URL="${{ steps.meta.outputs.pr_url }}"
+          BRANCH="${{ steps.meta.outputs.branch }}"
+          BASE="${{ steps.meta.outputs.base }}"
+          LOCAL_VER="${{ steps.meta.outputs.local_ver }}"
+          NEW_VER="${{ steps.meta.outputs.new_ver }}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          MERGED=false
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge "$PR_NUM" --squash --delete-branch; then
+              MERGED=true
+              break
+            fi
+            echo "Merge attempt $attempt failed for PR #$PR_NUM, rebasing onto origin/$BASE..."
+            sleep $(( attempt * 3 ))
+            git fetch origin "$BASE"
+            git rebase "origin/$BASE"
+            git push --force origin "$BRANCH"
+          done
+          if [ "$MERGED" != "true" ]; then
+            echo "Failed to auto-merge PR #$PR_NUM after 5 attempts" >&2
+            exit 1
+          fi
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py close-issue \
+            --pkg "$PKG" \
+            --comment "Resolved and auto-merged via PR #${PR_NUM} (\`${NEW_VER}\`, verified on X64 + ARM64)."
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
+            --event merged \
+            --pkg "$PKG" \
+            --title "${LOCAL_VER} -> ${NEW_VER} merged (X64 + ARM64)" \
+            --pr-url "$PR_URL" \
+            --run-url "$RUN_URL"
+
+      - name: Upload ARM64 build logs on failure
+        if: steps.meta.outputs.ready == 'true' && steps.arm64_build.outcome != 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-build-logs-${{ matrix.slug }}
+          path: ${{ runner.temp }}/arm64-build-logs
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Notify on ARM64 verification failure
+        if: steps.meta.outputs.ready == 'true' && steps.arm64_build.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PKG="${{ matrix.pkg }}"
+          LOCAL_VER="${{ steps.meta.outputs.local_ver }}"
+          NEW_VER="${{ steps.meta.outputs.new_ver }}"
+          PR_URL="${{ steps.meta.outputs.pr_url }}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
+            --event failed \
+            --pkg "$PKG" \
+            --title "${LOCAL_VER} -> ${NEW_VER} (arm64 build-test failed)" \
+            --detail "X64 passed (PR ${PR_URL} left open), but ARM64 Gentoo stage3 build/smoke test failed." \
+            --log-file "${{ runner.temp }}/arm64-build-logs/build.log" \
+            --log-file "${{ runner.temp }}/arm64-build-logs/console.log" \
+            --run-url "$RUN_URL"
+          exit 1

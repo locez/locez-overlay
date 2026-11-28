@@ -16,7 +16,7 @@ from .kernel import bump_cachyos, bump_xanmod
 from .proton import bump_dwproton, bump_proton_ge
 from .rust import bump_rust_crates, bump_rust_vendor
 from .simple import bump_cider, bump_github_release, bump_pypi
-from .tencent import bump_tencent_qq, bump_wechat
+from .tencent import bump_qqmusic, bump_tencent_qq, bump_wechat
 
 __all__ = ["BumpContext", "STRATEGIES", "Strategy", "bump_package"]
 
@@ -27,6 +27,7 @@ STRATEGIES: dict[str, Strategy] = {
     "proton-ge": bump_proton_ge,
     "dwproton": bump_dwproton,
     "tencent-qq": bump_tencent_qq,
+    "qqmusic": bump_qqmusic,
     "wechat": bump_wechat,
     "feishu": bump_feishu,
     "dingtalk": bump_dingtalk,

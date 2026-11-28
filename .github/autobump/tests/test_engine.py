@@ -41,7 +41,7 @@ from engine.plugins.cn_apps import sign_wps_url
 from engine.plugins.kernel import _extract_filesdir_patches
 from engine.plugins.rust import parse_crates_from_ebuild
 from engine.plugins.simple import bump_github_release
-from engine.plugins.tencent import sign_tencent_qq_url
+from engine.plugins.tencent import bump_qqmusic, sign_tencent_qq_url
 from engine.python_compat import (
     compute_target_compat,
     format_python_compat,
@@ -549,6 +549,53 @@ build = { mode = "emerge-full" }
         self.assertEqual(resolve_package_arches(cfg, "net-misc/tsshd"), ["x64", "arm64"])
         self.assertEqual(resolve_package_arches(cfg, "app-misc/bilihud", live=True), ["x64", "arm64"])
         self.assertEqual(resolve_package_arches(cfg, "sci-ml/llama-cpp", live=True), ["x64"])
+
+    def test_bump_qqmusic_updates_sign_ebuild_and_manifest(self) -> None:
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pdir = root / "media-sound" / "qqmusic"
+            pdir.mkdir(parents=True)
+            (pdir / "qqmusic-1.1.8-r2.ebuild").write_text(
+                'EAPI=8\nMY_SIGN="old-sign"\nSRC_URI="https://c.y.qq.com/?sign=${MY_SIGN}"\n',
+                encoding="utf-8",
+            )
+            work = root / "work"
+            work.mkdir()
+            spec = PackageSpec(pkg="media-sound/qqmusic", strategy="qqmusic")
+            cfg = AutomationConfig(
+                repo_root=root,
+                overlay=OverlayConfig(name="test", repository="org/test", base_branch="master", maintainer="me"),
+                build=load_config(REPO_ROOT).build,
+                notify=load_config(REPO_ROOT).notify,
+                ai_repair=load_config(REPO_ROOT).ai_repair,
+                packages={"media-sound/qqmusic": spec},
+            )
+            fake_html = (
+                '<a href="https://c.y.qq.com/cgi-bin/file_redirect.fcg?bid=dldir&file='
+                'ecosfile_plink%2Fmusic_clntupate%2Flinux%2Fother%2Fqqmusic_1.2.0_amd64.deb'
+                '&sign=1-abcdef123456-70000000">deb</a>'
+            )
+
+            def fake_download(url: str, dest: Path) -> Path:
+                self.assertIn("qqmusic_1.2.0_amd64.deb&sign=1-abcdef123456-70000000", url)
+                dest.write_bytes(b"fake-qqmusic-deb")
+                return dest
+
+            ctx = BumpContext(cfg=cfg, spec=spec, target_ver="1.2.0", work=work)
+            with (
+                patch("engine.plugins.tencent.http_get_text", return_value=fake_html),
+                patch("engine.plugins.tencent.download_file", side_effect=fake_download),
+            ):
+                new_ver = bump_qqmusic(ctx)
+
+            self.assertEqual(new_ver, "1.2.0")
+            self.assertFalse((pdir / "qqmusic-1.1.8-r2.ebuild").exists())
+            new_eb = pdir / "qqmusic-1.2.0.ebuild"
+            self.assertTrue(new_eb.is_file())
+            self.assertIn('MY_SIGN="1-abcdef123456-70000000"', new_eb.read_text(encoding="utf-8"))
+            self.assertIn("DIST qqmusic-1.2.0_amd64.deb ", (pdir / "Manifest").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

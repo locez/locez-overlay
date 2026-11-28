@@ -29,6 +29,7 @@ WECHAT_X64_URL = "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86
 WECHAT_ARM64_URL = "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb"
 QQ_CONFIG_URL = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js"
 QQ_SIGN_API_URL = "https://im.qq.com/http2rpc/gotrpc/noauth/trpc.qqntv2.urlsign.UrlSign/GetSign"
+QQMUSIC_DOWNLOAD_PAGE = "https://y.qq.com/download/download.html"
 
 
 def sign_tencent_qq_url(url: str, *, timeout: int = 30) -> str:
@@ -169,4 +170,43 @@ def bump_wechat(ctx: BumpContext) -> str:
             arm64_dist: dist_manifest_line(arm64_dist, arm64_tmp),
         },
     )
+    return new_ver
+
+
+def bump_qqmusic(ctx: BumpContext) -> str:
+    """Bump media-sound/qqmusic using the official static signed URL on y.qq.com/download/download.html."""
+    pdir = ctx.pkg_dir
+    ebuilds = list_release_ebuilds(ctx.repo_root, ctx.spec.pkg)
+    old_ver, old_eb = ebuilds[-1]
+    if re.sub(r"-r[0-9]+$", "", old_ver) == ctx.target_ver:
+        raise BumpSkip(f"{ctx.spec.pkg} already at {ctx.target_ver}")
+
+    html = http_get_text(QQMUSIC_DOWNLOAD_PAGE)
+    m = re.search(
+        r"(https://c\.y\.qq\.com/cgi-bin/file_redirect\.fcg\?bid=dldir&file="
+        r"ecosfile_plink%2Fmusic_clntupate%2Flinux%2Fother%2Fqqmusic_([0-9]+(?:\.[0-9]+)+)_amd64\.deb"
+        r"&sign=([A-Za-z0-9_-]+))",
+        html,
+    )
+    if not m:
+        raise BumpError("Failed to parse official QQ Music Linux amd64 signed URL from y.qq.com")
+    dl_url, new_ver, new_sign = m.group(1), m.group(2), m.group(3)
+    if re.sub(r"-r[0-9]+$", "", old_ver) == new_ver:
+        raise BumpSkip(f"{ctx.spec.pkg} already at {new_ver}")
+
+    distname = f"{ctx.spec.pn}-{new_ver}_amd64.deb"
+    dl = download_file(dl_url, ctx.work / distname)
+
+    eb_text = old_eb.read_text(encoding="utf-8")
+    eb_new = re.sub(r'^MY_SIGN="[^"]+"', f'MY_SIGN="{new_sign}"', eb_text, count=1, flags=re.M)
+    if f'MY_SIGN="{new_sign}"' not in eb_new:
+        raise BumpError("Failed to update MY_SIGN in qqmusic ebuild")
+
+    new_eb = pdir / f"{ctx.spec.pn}-{new_ver}.ebuild"
+    new_eb.write_text(eb_new, encoding="utf-8")
+    for _, eb in ebuilds:
+        if eb != new_eb:
+            eb.unlink()
+
+    write_manifest(pdir / "Manifest", {distname: dist_manifest_line(distname, dl)})
     return new_ver

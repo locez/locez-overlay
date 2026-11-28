@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .builder import render_container_test_script, render_health_check_script, resolve_target_atom
-from .common import get_local_version, list_release_ebuilds
+from .common import detect_ebuild_arches, get_local_version
 from .context import collect_failure_context
 from .deps import build_deps_for_package, resolve_packages_deps
 from .detect import detect_updates
@@ -207,34 +207,12 @@ def _git_changed_packages(repo_root: Path, base: str, *, only_configured: set[st
 def resolve_package_arches(cfg: AutomationConfig, pkg: str, *, live: bool = False) -> list[str]:
     """Determine supported CI architectures ('x64', 'arm64') for a package from build.arches or KEYWORDS."""
     spec = cfg.packages.get(pkg)
-    if spec and spec.build.arches:
-        return list(spec.build.arches)
-    pn = pkg.split("/", 1)[1]
-    ebuilds = list_release_ebuilds(cfg.repo_root, pkg)
-    eb_path: Path | None = None
-    if not live and ebuilds:
-        eb_path = ebuilds[-1][1]
-    elif (cfg.repo_root / pkg / f"{pn}-9999.ebuild").is_file():
-        eb_path = cfg.repo_root / pkg / f"{pn}-9999.ebuild"
-    elif ebuilds:
-        eb_path = ebuilds[-1][1]
-    if eb_path is None:
-        return ["x64"]
-
-    text = eb_path.read_text(encoding="utf-8")
-    kw_matches = re.findall(r'^\s*KEYWORDS="([^"]*)"', text, flags=re.M)
-    if not kw_matches:
-        # Live-only 9999 ebuilds omit KEYWORDS by Gentoo convention; test both x64 and arm64 unless overridden.
-        return ["x64", "arm64"]
-    tokens: set[str] = set()
-    for m in kw_matches:
-        tokens.update(m.split())
-    arches: list[str] = []
-    if "amd64" in tokens or "~amd64" in tokens:
-        arches.append("x64")
-    if "arm64" in tokens or "~arm64" in tokens:
-        arches.append("arm64")
-    return arches or ["x64"]
+    return detect_ebuild_arches(
+        cfg.repo_root,
+        pkg,
+        configured_arches=spec.build.arches if spec else (),
+        live=live,
+    )
 
 
 def _cmd_changed_packages(cfg: AutomationConfig, args: argparse.Namespace) -> int:

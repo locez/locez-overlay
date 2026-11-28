@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .common import BumpError, get_local_version, list_release_ebuilds, run, version_key
+from .common import BumpError, detect_ebuild_arches, get_local_version, list_release_ebuilds, run, version_key
 from .plugins.kernel import get_gentoo_stable_zfs_info
 from .plugins.tencent import detect_wechat_update
 from .retention import ebuild_forbids_zfs
@@ -120,6 +120,7 @@ def detect_updates(
                 if not upstream_ver or not local_ver:
                     continue
                 if version_key(upstream_ver) > version_key(local_ver):
+                    arches = detect_ebuild_arches(cfg.repo_root, pkg, configured_arches=spec.build.arches)
                     updates.append(
                         {
                             "pkg": pkg,
@@ -128,6 +129,7 @@ def detect_updates(
                             "local_ver": local_ver,
                             "upstream_ver": upstream_ver,
                             "policy": spec.policy,
+                            "arm64": "arm64" in arches,
                         }
                     )
 
@@ -141,6 +143,7 @@ def detect_updates(
                 wx = detect_wechat_update(cfg, spec)
                 if wx:
                     local_ver, probe_tag = wx
+                    arches = detect_ebuild_arches(cfg.repo_root, pkg, configured_arches=spec.build.arches)
                     updates.append(
                         {
                             "pkg": pkg,
@@ -149,6 +152,7 @@ def detect_updates(
                             "local_ver": local_ver,
                             "upstream_ver": probe_tag,
                             "policy": spec.policy,
+                            "arm64": "arm64" in arches,
                         }
                     )
             except Exception as exc:
