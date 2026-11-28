@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import tomllib
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .builder import render_container_test_script, resolve_target_atom
+from .builder import render_container_test_script, render_health_check_script, resolve_target_atom
 from .common import get_local_version
 from .context import collect_failure_context
 from .deps import build_deps_for_package, resolve_packages_deps
@@ -114,6 +115,20 @@ def _cmd_render_build_script(cfg: AutomationConfig, args: argparse.Namespace) ->
     return 0
 
 
+def _cmd_render_health_script(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    script = render_health_check_script(
+        cfg,
+        overlay_mount=args.overlay_mount,
+        log_dir=args.log_dir,
+    )
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(script, encoding="utf-8")
+    out_path.chmod(0o755)
+    _emit({"packages": len(cfg.packages), "script": str(out_path)})
+    return 0
+
+
 def _cmd_python_compat_detect(cfg: AutomationConfig, args: argparse.Namespace) -> int:
     _emit(scan_python_compat_updates(cfg, only_pkg=args.only), args.result_file)
     return 0
@@ -125,6 +140,17 @@ def _cmd_python_compat_sync(cfg: AutomationConfig, args: argparse.Namespace) -> 
     return 0
 
 
+def detect_toml_changed_packages(old_toml_text: str, new_toml_text: str) -> set[str]:
+    """Return package atoms whose [packages."cat/pn"] table was added or modified."""
+    old_pkgs = tomllib.loads(old_toml_text).get("packages", {}) if old_toml_text.strip() else {}
+    new_pkgs = tomllib.loads(new_toml_text).get("packages", {}) if new_toml_text.strip() else {}
+    changed: set[str] = set()
+    for pkg, new_data in new_pkgs.items():
+        if old_pkgs.get(pkg) != new_data:
+            changed.add(pkg)
+    return changed
+
+
 def _git_changed_packages(repo_root: Path, base: str, *, only_configured: set[str] | None = None) -> list[str]:
     res = subprocess.run(
         ["git", "diff", "--name-only", f"{base}...HEAD"],
@@ -134,8 +160,21 @@ def _git_changed_packages(repo_root: Path, base: str, *, only_configured: set[st
         check=True,
     )
     found: set[str] = set()
+    toml_changed = False
     for line in res.stdout.splitlines():
-        parts = line.strip().split("/")
+        rel = line.strip()
+        if not rel:
+            continue
+        if rel == "metadata/autobump.toml":
+            toml_changed = True
+            continue
+        parts = rel.split("/")
+        # Map .github/smoke/<cat>/<pn>.sh -> <cat>/<pn>
+        if len(parts) == 4 and parts[0] == ".github" and parts[1] == "smoke" and parts[3].endswith(".sh"):
+            candidate = f"{parts[2]}/{parts[3][:-3]}"
+            if only_configured is None or candidate in only_configured:
+                found.add(candidate)
+            continue
         if len(parts) < 3:
             continue
         candidate = f"{parts[0]}/{parts[1]}"
@@ -144,6 +183,23 @@ def _git_changed_packages(repo_root: Path, base: str, *, only_configured: set[st
                 found.add(candidate)
         elif (repo_root / parts[0] / parts[1]).is_dir():
             found.add(candidate)
+
+    if toml_changed and (repo_root / "metadata" / "autobump.toml").is_file():
+        old_proc = subprocess.run(
+            ["git", "show", f"{base}:metadata/autobump.toml"],
+            cwd=str(repo_root),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        old_text = old_proc.stdout if old_proc.returncode == 0 else ""
+        new_text = (repo_root / "metadata" / "autobump.toml").read_text(encoding="utf-8")
+        try:
+            for pkg in detect_toml_changed_packages(old_text, new_text):
+                if only_configured is None or pkg in only_configured:
+                    found.add(pkg)
+        except tomllib.TOMLDecodeError:
+            pass
     return sorted(found)
 
 
@@ -261,6 +317,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--python-target", default="", help="Extra PYTHON_TARGETS impl to test (e.g. python3_15)")
     p.add_argument("--out", required=True, help="Output path for generated bash script")
     p.set_defaults(func=_cmd_render_build_script)
+
+    p = sub.add_parser("render-health-script", help="Render single-container full-overlay dep-resolve & URL health probe script")
+    p.add_argument("--overlay-mount", default="/overlay")
+    p.add_argument("--log-dir", default="/health-logs")
+    p.add_argument("--out", required=True, help="Output path for generated bash script")
+    p.set_defaults(func=_cmd_render_health_script)
 
     p = sub.add_parser("python-compat-detect", help="Detect packages needing PYTHON_COMPAT bump or EOL cleanup")
     p.add_argument("--only", help="Filter to a single package")

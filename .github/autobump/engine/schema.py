@@ -66,6 +66,13 @@ class AIRepairConfig:
 
 
 @dataclass(frozen=True)
+class HealthConfig:
+    probe_urls: tuple[str, ...] = ()
+    probe_packages: tuple[str, ...] = ()
+    untracked_packages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class BuildSpec:
     mode: BuildMode = "dep-resolve"
     use: tuple[str, ...] = ()
@@ -137,6 +144,7 @@ class AutomationConfig:
     notify: NotifyConfig
     ai_repair: AIRepairConfig
     packages: dict[str, PackageSpec]
+    health: HealthConfig = field(default_factory=HealthConfig)
 
     def get_package(self, pkg: str) -> PackageSpec:
         if pkg not in self.packages:
@@ -320,6 +328,19 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
             weekly_live_test=bool(pdata.get("weekly_live_test", False)),
         )
 
+    hl = raw.get("health", {})
+    probe_urls = tuple(str(u) for u in hl.get("probe_urls", ()))
+    probe_packages = tuple(str(p) for p in hl.get("probe_packages", ()))
+    untracked_packages = tuple(str(p) for p in hl.get("untracked_packages", ()))
+    for ppkg in probe_packages:
+        if ppkg not in packages:
+            raise ConfigError(f"health.probe_packages references undeclared package '{ppkg}'")
+    health = HealthConfig(
+        probe_urls=probe_urls,
+        probe_packages=probe_packages,
+        untracked_packages=untracked_packages,
+    )
+
     return AutomationConfig(
         repo_root=root,
         overlay=overlay,
@@ -327,6 +348,7 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
         notify=notify,
         ai_repair=ai_repair,
         packages=packages,
+        health=health,
     )
 
 

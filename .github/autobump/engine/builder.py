@@ -213,3 +213,119 @@ def render_container_test_script(
 
     lines.append(f"echo 'BUILD_TEST_PASSED: {atom}'")
     return "\n".join(lines) + "\n"
+
+
+def render_health_check_script(
+    cfg: AutomationConfig,
+    *,
+    overlay_mount: str = "/overlay",
+    log_dir: str = "/health-logs",
+) -> str:
+    """Generate a single-container script that sweeps dep-resolve for all packages & probes signer/upstream URLs."""
+    repo_name = cfg.overlay.name
+    profile_lines: list[str] = []
+    if cfg.build.profile:
+        profile_lines = [
+            f"PROFILE={shlex.quote(cfg.build.profile)}",
+            'PROFILE="${PROFILE/\\/amd64\\///${GENTOO_ARCH}/}"',
+            'eselect profile set "${PROFILE}"',
+        ]
+
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'case "$(uname -m)" in',
+        '  x86_64)  GENTOO_ARCH="amd64" ;;',
+        '  aarch64) GENTOO_ARCH="arm64" ;;',
+        '  *)       GENTOO_ARCH="$(uname -m)" ;;',
+        "esac",
+        f"mkdir -p {shlex.quote(log_dir)} /etc/portage/repos.conf /etc/portage/package.accept_keywords /etc/portage/package.use",
+        "if [[ ! -d /var/db/repos/gentoo/metadata ]]; then",
+        "  emerge-webrsync -q",
+        "fi",
+        *profile_lines,
+        f"cat > /etc/portage/repos.conf/{repo_name}.conf <<'REPO'",
+        f"[{repo_name}]",
+        f"location = {overlay_mount}",
+        "priority = 100",
+        "auto-sync = no",
+        "REPO",
+        "cat >> /etc/portage/make.conf <<'MAKECONF'",
+        'ACCEPT_LICENSE="*"',
+        'CONFIG_PROTECT="-*"',
+        "MAKECONF",
+        f'echo "*/*::{repo_name} ~${{GENTOO_ARCH}}" > /etc/portage/package.accept_keywords/overlay',
+        "FAILURES=()",
+        "",
+        "echo '=== [1/2] Full-overlay dependency resolution sweep ==='",
+    ]
+
+    for pkg, spec in sorted(cfg.packages.items()):
+        atom = resolve_target_atom(cfg, pkg)
+        if atom.endswith("-9999"):
+            lines.append(f"echo {shlex.quote(pkg + ' **')} >> /etc/portage/package.accept_keywords/overlay")
+        use_flags = list(spec.build.effective_use_sets()[0])
+        if spec.build.mode == "emerge-full" and spec.build.test and "test" not in use_flags:
+            use_flags.append("test")
+        lines.append("rm -f /etc/portage/package.use/10-target /etc/portage/package.use/zz-autounmask")
+        if use_flags:
+            lines.append(
+                f"echo {shlex.quote(pkg + ' ' + ' '.join(use_flags))} > /etc/portage/package.use/10-target"
+            )
+        safe_slug = shlex.quote(f"{log_dir}/dep-{spec.slug}.log")
+        lines += [
+            f"echo '--- [dep-resolve] {atom} ---'",
+            f"if emerge --pretend --verbose --autounmask=y --autounmask-use=y {shlex.quote(atom)} >{safe_slug} 2>&1; then",
+            f"  echo '  OK: {atom}'",
+            "else",
+            f"  echo '  FAILED: {atom}'",
+            f"  tail -n 30 {safe_slug} || true",
+            f"  FAILURES+=({shlex.quote('dep-resolve: ' + atom)})",
+            "fi",
+        ]
+
+    probe_urls = list(cfg.health.probe_urls)
+    probe_cpvs = [resolve_target_atom(cfg, p).lstrip("=") for p in cfg.health.probe_packages]
+    if probe_urls or probe_cpvs:
+        lines += [
+            "",
+            "echo '=== [2/2] Signer & upstream SRC_URI health probes ==='",
+            "python3 - <<'PYEOF' || FAILURES+=('url-probes')",
+            "import re, sys, urllib.error, urllib.request",
+            "import portage",
+            f"probe_urls = {probe_urls!r}",
+            f"probe_cpvs = {probe_cpvs!r}",
+            "db = portage.db[portage.root]['porttree'].dbapi",
+            "urls = [('static', u) for u in probe_urls]",
+            "for cpv in probe_cpvs:",
+            "    raw = db.aux_get(cpv, ['SRC_URI'])[0]",
+            "    found = sorted(set(re.findall(r'https?://[^\\s\\)]+', raw)))",
+            "    if not found:",
+            "        print(f'FAIL: no URLs found in SRC_URI for {cpv}')",
+            "        sys.exit(1)",
+            "    for u in found:",
+            "        urls.append((cpv, u))",
+            "failed = []",
+            "for label, u in urls:",
+            f"    req = urllib.request.Request(u, method='HEAD', headers={{'User-Agent': '{repo_name}-overlay-health/1.0'}})",
+            "    try:",
+            "        with urllib.request.urlopen(req, timeout=30) as r:",
+            "            print(f'OK [{r.status}] ({label}) {u} -> {r.geturl()}')",
+            "    except Exception as exc:",
+            "        print(f'FAIL ({label}) {u}: {exc}')",
+            "        failed.append(f'{label}: {u} ({exc})')",
+            "if failed:",
+            "    sys.exit(1)",
+            "PYEOF",
+        ]
+
+    lines += [
+        "",
+        'if [[ "${#FAILURES[@]}" -gt 0 ]]; then',
+        '  echo "=== OVERLAY HEALTH FAILURES (${#FAILURES[@]}) ==="',
+        '  printf " - %s\\n" "${FAILURES[@]}"',
+        "  exit 1",
+        "fi",
+        "echo 'OVERLAY_HEALTH_PASSED'",
+    ]
+    return "\n".join(lines) + "\n"

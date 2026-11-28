@@ -16,7 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(AUTOBUMP_DIR) not in sys.path:
     sys.path.insert(0, str(AUTOBUMP_DIR))
 
-from engine.builder import render_container_test_script, resolve_target_atom
+from engine.builder import render_container_test_script, render_health_check_script, resolve_target_atom
+from engine.cli import detect_toml_changed_packages
 from engine.common import get_local_version, version_key
 from engine.context import _select_latest_ebuild
 from engine.deps import (
@@ -493,6 +494,53 @@ SRC_URI="
         with patch("urllib.request.urlopen", return_value=fake_resp):
             qq_signed = sign_tencent_qq_url("https://qqdl.gtimg.cn/qqfile/QQNTV2/test.deb")
         self.assertEqual(qq_signed, "https://qqdl.gtimg.cn/qqfile/QQNTV2/test.deb?sign=abc123&t=1795855379")
+
+    def test_health_script_valid_bash_and_package_registration_drift(self) -> None:
+        cfg = load_config(REPO_ROOT)
+        script = render_health_check_script(cfg, overlay_mount="/overlay", log_dir="/health-logs")
+        self.assertIn("OVERLAY_HEALTH_PASSED", script)
+        self.assertIn("https://overlay.locez.com/healthz", script)
+        for pkg in cfg.packages:
+            self.assertIn(pkg, script)
+        with tempfile.TemporaryDirectory() as tmp:
+            spath = Path(tmp) / "overlay-health.sh"
+            spath.write_text(script, encoding="utf-8")
+            subprocess.run(["bash", "-n", str(spath)], check=True)
+
+        # Ensure every ebuild package directory in repo is either registered in metadata/autobump.toml
+        # or explicitly listed in health.untracked_packages (prevents silent CI bypass).
+        disk_pkgs: set[str] = set()
+        for ebuild in REPO_ROOT.glob("*/*/*.ebuild"):
+            rel = ebuild.relative_to(REPO_ROOT)
+            if rel.parts[0].startswith("."):
+                continue
+            disk_pkgs.add(f"{rel.parts[0]}/{rel.parts[1]}")
+        tracked = set(cfg.packages) | set(cfg.health.untracked_packages)
+        self.assertEqual(disk_pkgs - tracked, set(), f"Unregistered packages found: {sorted(disk_pkgs - tracked)}")
+        self.assertEqual(set(cfg.packages) - disk_pkgs, set(), f"Stale entries in autobump.toml: {sorted(set(cfg.packages) - disk_pkgs)}")
+
+    def test_detect_toml_changed_packages(self) -> None:
+        old_toml = """
+[packages."app-i18n/rime-ice"]
+build = { mode = "emerge-full", use = ["lua"] }
+
+[packages."media-sound/cider"]
+build = { mode = "emerge-bin" }
+"""
+        new_toml = """
+[packages."app-i18n/rime-ice"]
+build = { mode = "emerge-full", use = ["-lua"] }
+
+[packages."media-sound/cider"]
+build = { mode = "emerge-bin" }
+
+[packages."net-misc/newpkg"]
+build = { mode = "emerge-full" }
+"""
+        self.assertEqual(
+            detect_toml_changed_packages(old_toml, new_toml),
+            {"app-i18n/rime-ice", "net-misc/newpkg"},
+        )
 
 
 if __name__ == "__main__":

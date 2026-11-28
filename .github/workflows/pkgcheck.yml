@@ -7,6 +7,9 @@ on:
   schedule:
     - cron: '0 0 * * 1'
 
+permissions:
+  contents: read
+
 jobs:
   pkgcheck:
     runs-on: ubuntu-latest
@@ -16,7 +19,14 @@ jobs:
       - name: Run autobump engine unit tests
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/autobump/tests -v
 
-      - name: Run pkgcheck
+      - name: Run Cloudflare Worker unit tests
+        if: hashFiles('.github/worker/worker.test.mjs') != ''
+        run: node --test .github/worker/worker.test.mjs
+
+      - name: Validate workflow & action YAML syntax
+        run: python3 -c "import glob, yaml; [yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml') + glob.glob('.github/actions/*/action.yml')]"
+
+      - name: Run pkgcheck (offline on push/PR, --net on weekly schedule)
         uses: pkgcore/pkgcheck-action@v1
         with:
-          args: --net
+          args: ${{ github.event_name == 'schedule' && '--net --exit error' || '--exit error' }}

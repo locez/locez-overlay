@@ -5,7 +5,108 @@ on:
     - cron: "0 4 * * 1" # Every Monday at 04:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  overlay-health:
+    name: Full-overlay dep-resolve & signer URL health
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare Gentoo Portage tree cache key
+        id: tree_cache
+        run: |
+          DAY="$(date -u +%Y-%m-%d)"
+          TREE_DIR="${{ runner.temp }}/gentoo-health-tree"
+          mkdir -p "$TREE_DIR"
+          echo "tree_dir=${TREE_DIR}" >> "$GITHUB_OUTPUT"
+          echo "tree_key=gentoo-tree-v1-${DAY}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore daily Gentoo Portage tree cache
+        id: restore_tree
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.tree_cache.outputs.tree_dir }}
+          key: ${{ steps.tree_cache.outputs.tree_key }}
+
+      - name: Run full-overlay dep-resolve sweep & signer URL probes in Gentoo stage3
+        id: health
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          LOG_DIR="${{ runner.temp }}/health-logs"
+          TREE_DIR="${{ steps.tree_cache.outputs.tree_dir }}"
+          mkdir -p "$LOG_DIR" "$TREE_DIR"
+
+          SCRIPT_PATH="${{ runner.temp }}/overlay-health.sh"
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py render-health-script \
+            --overlay-mount /overlay \
+            --log-dir /health-logs \
+            --out "$SCRIPT_PATH"
+
+          IMAGE="$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py config-info | jq -r '.build.stage3_image')"
+
+          set +e
+          docker run --rm \
+            -v "${{ github.workspace }}:/overlay:ro" \
+            -v "${SCRIPT_PATH}:/run-health.sh:ro" \
+            -v "${LOG_DIR}:/health-logs" \
+            -v "${TREE_DIR}:/var/db/repos/gentoo" \
+            "$IMAGE" \
+            bash /run-health.sh 2>&1 | tee "${LOG_DIR}/console.log"
+          EXIT_CODE="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$(id -u)" -ne 0 ]; then
+            sudo -n chown -R "$(id -u):$(id -g)" "$TREE_DIR" "$LOG_DIR" 2>/dev/null || true
+          fi
+          if [ "${{ steps.restore_tree.outputs.cache-hit }}" != "true" ] && [ -d "${TREE_DIR}/metadata" ]; then
+            echo "save_tree=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "save_tree=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$EXIT_CODE"
+
+      - name: Save daily Gentoo Portage tree cache
+        if: always() && steps.health.outputs.save_tree == 'true'
+        uses: actions/cache/save@v6
+        continue-on-error: true
+        with:
+          path: ${{ steps.tree_cache.outputs.tree_dir }}
+          key: ${{ steps.tree_cache.outputs.tree_key }}
+
+      - name: Upload health check logs on failure
+        if: steps.health.outcome != 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: overlay-health-logs
+          path: ${{ runner.temp }}/health-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Notify on overlay health failure
+        if: steps.health.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          TAIL=$(tail -n 60 "${{ runner.temp }}/health-logs/console.log" 2>/dev/null || echo "Overlay health check failed")
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
+            --event health_alert \
+            --pkg "overlay/health" \
+            --title "Weekly dep-resolve / URL signer health check failed" \
+            --detail "$TAIL" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          exit 1
+
   plan-live:
     runs-on: ubuntu-latest
     outputs:
@@ -18,7 +119,7 @@ jobs:
       - name: List 9999 live packages from metadata/autobump.toml
         id: live
         run: |
-          PKGS=$(python3 .github/autobump/main.py live-packages | jq -c '.')
+          PKGS=$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py live-packages | jq -c '.')
           COUNT=$(echo "$PKGS" | jq 'length')
           echo "matrix=$PKGS" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
@@ -50,7 +151,16 @@ jobs:
         with:
           package: ${{ matrix.pkg }}
           live: "true"
-          log-dir: /tmp/live-logs
+          log-dir: ${{ runner.temp }}/live-logs
+
+      - name: Upload live build logs on failure
+        if: steps.test.outcome != 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-logs-${{ matrix.slug }}
+          path: ${{ runner.temp }}/live-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Notify on 9999 live build regression
         if: steps.test.outcome != 'success'
@@ -59,8 +169,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          TAIL=$(tail -n 60 /tmp/live-logs/console.log 2>/dev/null || echo "Live build failed")
-          python3 .github/autobump/main.py notify \
+          TAIL=$(tail -n 60 "${{ runner.temp }}/live-logs/console.log" 2>/dev/null || echo "Live build failed")
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
             --event health_alert \
             --pkg "${{ matrix.pkg }}" \
             --title "9999 live ebuild build/test failed" \

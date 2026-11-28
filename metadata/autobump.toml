@@ -33,6 +33,20 @@ allowed_extra_paths = ["licenses/"]
 # Override via repository secret AI_REPAIR_CMD if needed.
 command = ""
 
+[health]
+# Online signer/URL health probes & explicit exemptions for untracked packages
+probe_urls = ["https://overlay.locez.com/healthz"]
+probe_packages = [
+  "net-im/tencent-qq",
+  "app-office/wps-office",
+  "media-sound/qqmusic",
+]
+untracked_packages = [
+  "dev-libs/denial-flutter-engine-bin",
+  "gui-wm/denial",
+  "gui-wm/denial-bin",
+]
+
 # =============================================================================
 # Package Specifications
 # =============================================================================

@@ -38,7 +38,7 @@ runs:
         SHOULD_FREE="${{ inputs.free-disk }}"
         if [ "$SHOULD_FREE" = "auto" ]; then
           case "${{ inputs.package }}" in
-            sys-kernel/*|app-emulation/*) SHOULD_FREE="true" ;;
+            sys-kernel/*|app-emulation/*|sci-ml/*|app-office/*|gui-wm/*) SHOULD_FREE="true" ;;
             *) SHOULD_FREE="false" ;;
           esac
         fi
