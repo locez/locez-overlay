@@ -126,7 +126,8 @@ src_prepare() {
 	# its DT_NEEDED libFcitx5Qt5DBusAddons.so.1 in platforminputcontexts/, and
 	# Qt silently falls back to the compose input context, breaking CJK input.
 	rpath="${rpath_root}/:${rpath_root}/swiftshader/:"
-	rpath+="${rpath_root}/platforminputcontexts/:${rpath_root}/imageformats/"
+	rpath+="${rpath_root}/platforminputcontexts/:${rpath_root}/imageformats/:"
+	rpath+="${rpath_root}/plugins/dtwebview/"
 	while IFS= read -r -d '' x; do
 		# Use \x7fELF header to separate ELF executables and libraries
 		[[ $(od -t x1 -N 4 "${x}") == *"7f 45 4c 46"* ]] || continue

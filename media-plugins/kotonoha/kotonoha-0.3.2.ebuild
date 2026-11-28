@@ -45,6 +45,7 @@ RDEPEND="
 BDEPEND="
 	dev-util/wayland-scanner
 	virtual/pkgconfig
+	test? ( media-fonts/wqy-microhei )
 "
 
 EPYTEST_PLUGINS=( pytest-asyncio )

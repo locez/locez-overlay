@@ -2,7 +2,7 @@
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=8
-LUA_COMPAT=( lua5-4 )
+LUA_COMPAT=( lua5-{1,3,4} luajit )
 inherit git-r3 lua-single
 
 DESCRIPTION="Rime ICE - A long-term maintained simplified Chinese Rime schema"

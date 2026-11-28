@@ -27,7 +27,7 @@ fi
 
 failed=0
 for bin in "${bins[@]}"; do
-  if [[ ! -x "$bin" ]]; then
+  if [[ ! -f "$bin" || ! -x "$bin" ]]; then
     echo "FAIL: binary not executable or missing: $bin" >&2
     failed=1
     continue

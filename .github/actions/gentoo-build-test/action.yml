@@ -137,6 +137,13 @@ runs:
         DOCKER_EXIT="${PIPESTATUS[0]}"
         set -e
 
+        # Sanitize ':' in Portage log filenames so actions/upload-artifact accepts them on all runners
+        if [ -d "$LOG_DIR" ]; then
+          find "$LOG_DIR" -maxdepth 1 -name '*:*' -print0 2>/dev/null | while IFS= read -r -d '' f; do
+            mv -f "$f" "${f//:/_}" 2>/dev/null || true
+          done
+        fi
+
         # Ensure runner user owns cached files created by root inside Docker
         if [ "$(id -u)" -ne 0 ]; then
           sudo -n chown -R "$(id -u):$(id -g)" "$CACHE_ROOT" 2>/dev/null \

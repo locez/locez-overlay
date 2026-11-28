@@ -212,7 +212,7 @@ strategy = "dingtalk"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "test -L /usr/bin/dingtalk && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/apps/com.alibabainc.dingtalk/files/*/com.alibabainc.dingtalk && test -f /usr/share/applications/com.alibabainc.dingtalk.desktop"
+smoke_test = "test -L /usr/bin/dingtalk && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/apps/com.alibabainc.dingtalk/files/[0-9]*/com.alibabainc.dingtalk && test -f /usr/share/applications/com.alibabainc.dingtalk.desktop"
 
 [packages."net-misc/baidunetdisk"]
 detect = { type = "nvchecker", source = "regex", url = "https://pan.baidu.com/disk/cmsdata?do=client", regex = 'baidunetdisk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
