@@ -65,6 +65,29 @@ retention = { type = "keep-latest", count = 3 }
 policy = "auto-merge"
 build = { mode = "emerge-bin", use = ["abi_x86_32"] }
 
+[packages."app-misc/herdr"]
+detect = { type = "nvchecker", source = "github", github = "herdrdev/herdr", use_latest_release = true, prefix = "v" }
+strategy = "rust-vendor"
+zig_manifest_dir = "vendor/libghostty-vt"
+zig_deps = ["zlib", "highway", "wuffs", "translate_c", "iterm2_themes"]
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", test = false }
+smoke_test = "herdr --version && test -f /usr/share/bash-completion/completions/herdr && test -f /usr/share/zsh/site-functions/_herdr && test -f /usr/share/fish/vendor_completions.d/herdr.fish"
+
+[packages."app-misc/herdr-bin"]
+detect = { type = "nvchecker", source = "github", github = "herdrdev/herdr", use_latest_release = true, prefix = "v" }
+strategy = "github-release"
+url_template = "https://github.com/herdrdev/herdr/releases/download/v{ver}/herdr-linux-x86_64"
+dist_template = "herdr-bin-{ver}-amd64"
+extra_dists = [
+  { url_template = "https://github.com/herdrdev/herdr/releases/download/v{ver}/herdr-linux-aarch64", dist_template = "herdr-bin-{ver}-arm64" },
+]
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+smoke_test = "herdr --version && test -f /usr/share/bash-completion/completions/herdr && test -f /usr/share/zsh/site-functions/_herdr && test -f /usr/share/fish/vendor_completions.d/herdr.fish"
+
 [packages."dev-python/pure-protobuf"]
 detect = { type = "nvchecker", source = "pypi", pypi = "pure-protobuf" }
 strategy = "pypi"
