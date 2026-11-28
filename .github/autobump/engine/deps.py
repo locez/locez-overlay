@@ -1,4 +1,4 @@
-"""Unified Go & Rust offline dependency tarball builder & distfiles uploader.
+"""Unified Go, Rust & Zig offline dependency tarball builder & distfiles uploader.
 
 Follows a single overlay-agnostic convention for hosting vendor/deps tarballs
 in a dedicated GitHub repository (overlay.distfiles_repo, defaulting to
@@ -11,15 +11,19 @@ overlay.repository):
 Tarball internal layouts match Gentoo eclasses natively (zero custom unpack boilerplate):
 - Go (`inherit go-module`): `<src_root>/vendor/...` -> overlays straight into `${S}/vendor`.
 - Rust (`inherit cargo`):   `cargo_home/gentoo/...` -> overlays straight into `${ECARGO_VENDOR}`
-  (plus optional `cargo_home/git-sources.toml` when Cargo.lock contains git dependencies).
+  (plus optional `cargo_home/git-sources.toml` when Cargo.lock contains git dependencies,
+  and optional `zig_packages/<hash>/...` for hybrid Rust+Zig builds).
+- Zig (`zig --system`):     `zig_packages/<hash>/...` -> passed directly via `--system "${WORKDIR}/zig_packages"`.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import shutil
 import tempfile
 import tomllib
+import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -35,7 +39,7 @@ from .common import (
 )
 from .schema import AutomationConfig
 
-DepsKind = Literal["go", "rust"]
+DepsKind = Literal["go", "rust", "zig"]
 DepsAction = Literal["built_and_uploaded", "reused_existing", "built_local_only"]
 
 DEPS_PLACEHOLDER = "__DEPS_TARBALL_URI__"
@@ -173,11 +177,251 @@ def _read_cargo_rust_version(cargo_toml: Path) -> str:
     return ""
 
 
+@dataclass(frozen=True)
+class ZigZonDep:
+    name: str
+    url: str = ""
+    hash: str = ""
+    path: str = ""
+    lazy: bool = False
+
+
+def _strip_zig_comments(text: str) -> str:
+    """Strip // line comments from Zig ZON while preserving string literals."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    in_str = False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            i += 2
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _find_matching_brace(text: str, open_idx: int) -> int:
+    """Return index of '}' matching '{' at open_idx, ignoring braces inside string literals."""
+    depth = 0
+    i = open_idx
+    n = len(text)
+    in_str = False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise BumpError("Unclosed '{' while parsing build.zig.zon")
+
+
+def parse_zig_zon(zon_text: str) -> tuple[str, list[ZigZonDep]]:
+    """Parse minimum_zig_version and .dependencies entries from a build.zig.zon file."""
+    cleaned = _strip_zig_comments(zon_text)
+    min_m = re.search(r'\.minimum_zig_version\s*=\s*"([^"]+)"', cleaned)
+    min_zig_ver = min_m.group(1) if min_m else ""
+
+    deps_m = re.search(r"\.dependencies\s*=\s*\.\{", cleaned)
+    if not deps_m:
+        return min_zig_ver, []
+
+    open_idx = deps_m.end() - 1
+    close_idx = _find_matching_brace(cleaned, open_idx)
+    body = cleaned[open_idx + 1 : close_idx]
+
+    deps: list[ZigZonDep] = []
+    pos = 0
+    entry_re = re.compile(r'\.(@"((?:\\.|[^"\\])+)"|([A-Za-z_][A-Za-z0-9_]*))\s*=\s*\.\{')
+    while pos < len(body):
+        m = entry_re.search(body, pos)
+        if not m:
+            break
+        name = m.group(2) if m.group(2) is not None else m.group(3)
+        entry_open = m.end() - 1
+        entry_close = _find_matching_brace(body, entry_open)
+        entry_body = body[entry_open + 1 : entry_close]
+
+        url_m = re.search(r'\.url\s*=\s*"([^"]+)"', entry_body)
+        hash_m = re.search(r'\.hash\s*=\s*"([^"]+)"', entry_body)
+        path_m = re.search(r'\.path\s*=\s*"([^"]+)"', entry_body)
+        lazy_m = re.search(r"\.lazy\s*=\s*(true|false)\b", entry_body)
+        deps.append(
+            ZigZonDep(
+                name=name,
+                url=url_m.group(1) if url_m else "",
+                hash=hash_m.group(1) if hash_m else "",
+                path=path_m.group(1) if path_m else "",
+                lazy=(lazy_m.group(1) == "true") if lazy_m else False,
+            )
+        )
+        pos = entry_close + 1
+    return min_zig_ver, deps
+
+
+def _extract_zig_package(url: str, dest_dir: Path, work_dir: Path) -> None:
+    """Fetch and unpack a single Zig package (tarball, zip, or git+https) into dest_dir."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    if url.startswith(("git+http://", "git+https://")):
+        raw = url[len("git+") :]
+        if "#" not in raw:
+            raise BumpError(f"Unsupported Zig git dependency without revision fragment: {url}")
+        repo_part, rev = raw.split("#", 1)
+        repo_url = repo_part.split("?", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="zig-git-", dir=work_dir) as tmp:
+            repo_dir = Path(tmp) / "repo"
+            repo_dir.mkdir()
+            archive_tar = Path(tmp) / "archive.tar"
+            run(["git", "init", "-q"], cwd=repo_dir)
+            run(["git", "fetch", "--depth", "1", repo_url, rev], cwd=repo_dir)
+            run(["git", "archive", "--format=tar", "-o", str(archive_tar), "FETCH_HEAD"], cwd=repo_dir)
+            run(["tar", "-xf", str(archive_tar), "-C", str(dest_dir)])
+        return
+
+    if not url.startswith(("http://", "https://")):
+        raise BumpError(f"Unsupported Zig dependency URL scheme: {url}")
+
+    fname = url.rsplit("/", 1)[-1].split("?", 1)[0] or "pkg.tar.gz"
+    dl_path = work_dir / f"{dest_dir.name}-{fname}"
+    download_file(url, dl_path)
+
+    with tempfile.TemporaryDirectory(prefix="zig-extract-", dir=work_dir) as tmp:
+        extract_tmp = Path(tmp)
+        if fname.endswith(".zip"):
+            with zipfile.ZipFile(dl_path) as zf:
+                zf.extractall(extract_tmp)
+        else:
+            run(["tar", "-xf", str(dl_path), "-C", str(extract_tmp)])
+
+        entries = [e for e in extract_tmp.iterdir() if e.name != "pax_global_header"]
+        root_src = entries[0] if len(entries) == 1 and entries[0].is_dir() else extract_tmp
+        for child in root_src.iterdir():
+            shutil.move(str(child), str(dest_dir / child.name))
+
+    git_meta = dest_dir / ".git"
+    if git_meta.exists():
+        shutil.rmtree(git_meta, ignore_errors=True)
+
+
+def vendor_zig_deps(
+    manifest_root: Path,
+    out_dir: Path,
+    *,
+    src_root: Path | None = None,
+    selected_lazy: set[str] | None = None,
+) -> tuple[str, int]:
+    """Recursively crawl build.zig.zon and populate a `zig build --system` directory at out_dir."""
+    root_zon = manifest_root / "build.zig.zon"
+    if not root_zon.is_file():
+        raise BumpError(f"build.zig.zon not found in {manifest_root}")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    resolved_src_root = (src_root or manifest_root).resolve()
+    min_zig_ver, _ = parse_zig_zon(root_zon.read_text(encoding="utf-8"))
+    visited_dirs: set[Path] = {manifest_root.resolve()}
+    fetched_hashes: set[str] = set()
+
+    with tempfile.TemporaryDirectory(prefix="zig-vendor-dl-") as dl_tmp:
+        dl_work = Path(dl_tmp)
+
+        def _crawl(zon_dir: Path, *, lazy_allowlist: set[str] | None) -> None:
+            zon_path = zon_dir / "build.zig.zon"
+            if not zon_path.is_file():
+                return
+            _, deps = parse_zig_zon(zon_path.read_text(encoding="utf-8"))
+            for dep in deps:
+                if dep.lazy and lazy_allowlist is not None and dep.name not in lazy_allowlist:
+                    continue
+                if dep.path:
+                    target = (zon_dir / dep.path).resolve()
+                    try:
+                        target.relative_to(resolved_src_root)
+                    except ValueError:
+                        raise BumpError(
+                            f"Zig local path dependency '{dep.name}' ({dep.path}) escapes source root {resolved_src_root}"
+                        )
+                    if target.is_dir() and target not in visited_dirs:
+                        visited_dirs.add(target)
+                        _crawl(target, lazy_allowlist=None)
+                elif dep.url:
+                    if not dep.hash:
+                        raise BumpError(f"Zig dependency '{dep.name}' ({dep.url}) is missing .hash in {zon_path}")
+                    if dep.hash in fetched_hashes:
+                        continue
+                    fetched_hashes.add(dep.hash)
+                    pkg_dir = out_dir / dep.hash
+                    _extract_zig_package(dep.url, pkg_dir, dl_work)
+                    _crawl(pkg_dir, lazy_allowlist=None)
+
+        _crawl(manifest_root.resolve(), lazy_allowlist=selected_lazy)
+
+    return min_zig_ver, len(fetched_hashes)
+
+
+def build_zig_deps_tarball(
+    src_root: Path,
+    out_tar: Path,
+    *,
+    manifest_dir: str = "",
+    zig_deps: tuple[str, ...] = (),
+) -> DepsBuildMeta:
+    manifest_root = (src_root / manifest_dir) if manifest_dir else src_root
+    with tempfile.TemporaryDirectory(prefix="zig-vendor-stage-") as tmp:
+        stage = Path(tmp)
+        min_zig_ver, _ = vendor_zig_deps(
+            manifest_root,
+            stage / "zig_packages",
+            src_root=src_root,
+            selected_lazy=set(zig_deps) if zig_deps else None,
+        )
+        out_tar.parent.mkdir(parents=True, exist_ok=True)
+        run(["tar", *_DETERMINISTIC_TAR_FLAGS, "-cJf", str(out_tar), "-C", str(stage), "zig_packages"])
+        return DepsBuildMeta(
+            kind="zig",
+            min_toolchain_ver=min_zig_ver,
+            has_git_crates=False,
+            tarball=out_tar,
+        )
+
+
 def build_rust_deps_tarball(
     src_root: Path,
     out_tar: Path,
     *,
     manifest_dir: str = "",
+    zig_manifest_dir: str = "",
+    zig_deps: tuple[str, ...] = (),
 ) -> DepsBuildMeta:
     manifest_root = (src_root / manifest_dir) if manifest_dir else src_root
     cargo_toml = manifest_root / "Cargo.toml"
@@ -200,8 +444,18 @@ def build_rust_deps_tarball(
         if git_sources:
             (stage / "cargo_home" / "git-sources.toml").write_text(git_sources, encoding="utf-8")
 
+        tar_members = ["cargo_home"]
+        if zig_manifest_dir:
+            vendor_zig_deps(
+                src_root / zig_manifest_dir,
+                stage / "zig_packages",
+                src_root=src_root,
+                selected_lazy=set(zig_deps) if zig_deps else None,
+            )
+            tar_members.append("zig_packages")
+
         out_tar.parent.mkdir(parents=True, exist_ok=True)
-        run(["tar", *_DETERMINISTIC_TAR_FLAGS, "-cJf", str(out_tar), "-C", str(stage), "cargo_home"])
+        run(["tar", *_DETERMINISTIC_TAR_FLAGS, "-cJf", str(out_tar), "-C", str(stage), *tar_members])
         return DepsBuildMeta(
             kind="rust",
             min_toolchain_ver=rust_min_ver,
@@ -290,6 +544,8 @@ def ensure_deps_tarball(
     upload: bool,
     go_build_target: str = ".",
     cargo_manifest_dir: str = "",
+    zig_manifest_dir: str = "",
+    zig_deps: tuple[str, ...] = (),
 ) -> DepsResolution:
     """Ensure <pn>-<ver>-deps.tar.xz is materialized locally and (when upload=True) hosted remotely.
 
@@ -319,9 +575,22 @@ def ensure_deps_tarball(
         if kind == "go":
             meta = build_go_deps_tarball(src_root, unpack_dir, out_tar, build_target=go_build_target)
         elif kind == "rust":
-            meta = build_rust_deps_tarball(src_root, out_tar, manifest_dir=cargo_manifest_dir)
+            meta = build_rust_deps_tarball(
+                src_root,
+                out_tar,
+                manifest_dir=cargo_manifest_dir,
+                zig_manifest_dir=zig_manifest_dir,
+                zig_deps=zig_deps,
+            )
+        elif kind == "zig":
+            meta = build_zig_deps_tarball(
+                src_root,
+                out_tar,
+                manifest_dir=zig_manifest_dir,
+                zig_deps=zig_deps,
+            )
         else:
-            raise BumpError(f"Unsupported deps kind '{kind}' (expected 'go' or 'rust')")
+            raise BumpError(f"Unsupported deps kind '{kind}' (expected 'go', 'rust', or 'zig')")
 
     if upload and distfiles_repo:
         url = upload_deps_release(
@@ -385,6 +654,8 @@ def build_deps_for_package(
     upload: bool = False,
     go_build_target: str = ".",
     cargo_manifest_dir: str = "",
+    zig_manifest_dir: str = "",
+    zig_deps: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     if "/" not in pkg:
         raise BumpError(f"Expected 'category/name' for --pkg, got '{pkg}'")
@@ -413,6 +684,8 @@ def build_deps_for_package(
             upload=upload,
             go_build_target=go_build_target,
             cargo_manifest_dir=cargo_manifest_dir,
+            zig_manifest_dir=zig_manifest_dir,
+            zig_deps=zig_deps,
         )
         return {
             **asdict(res),
@@ -481,12 +754,16 @@ def detect_deps_kind(eb_text: str, strategy: str = "") -> DepsKind | None:
         return "go"
     if strategy == "rust-vendor":
         return "rust"
+    if strategy == "zig-vendor":
+        return "zig"
     inherit_lines = re.findall(r"^\s*inherit\s+(.+)$", eb_text, re.M)
     eclasses = {ec for line in inherit_lines for ec in line.split()}
     if "go-module" in eclasses:
         return "go"
     if "cargo" in eclasses:
         return "rust"
+    if "zig" in eclasses or "zig-utils" in eclasses:
+        return "zig"
     return None
 
 
@@ -534,7 +811,7 @@ def _resolve_single_package_deps(
     spec = cfg.packages.get(pkg)
     kind = detect_deps_kind(eb_text, spec.strategy if spec else "")
     if kind is None:
-        raise BumpError(f"{pkg}: has {DEPS_PLACEHOLDER} or deps URI but is neither go-module nor cargo")
+        raise BumpError(f"{pkg}: has {DEPS_PLACEHOLDER} or deps URI but is neither go-module, cargo, nor zig")
 
     src_url, src_dist = parse_primary_src_uri(eb_text, pkg, ver, distfiles_repo)
     deps_dist = deps_tarball_name(pn, ver)
@@ -554,6 +831,8 @@ def _resolve_single_package_deps(
             upload=upload,
             go_build_target=(spec.go_build_target if spec else "") or ".",
             cargo_manifest_dir=(spec.cargo_manifest_dir if spec else ""),
+            zig_manifest_dir=(spec.zig_manifest_dir if spec else ""),
+            zig_deps=(spec.zig_deps if spec else ()),
         )
 
         new_eb_text = rewrite_ebuild_deps_metadata(

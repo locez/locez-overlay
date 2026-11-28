@@ -285,6 +285,7 @@ def _cmd_ai_repair(cfg: AutomationConfig, args: argparse.Namespace) -> int:
 
 
 def _cmd_build_deps(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    zig_deps = tuple(d.strip() for d in (args.zig_deps or "").split(",") if d.strip())
     res = build_deps_for_package(
         cfg,
         pkg=args.pkg,
@@ -295,6 +296,8 @@ def _cmd_build_deps(cfg: AutomationConfig, args: argparse.Namespace) -> int:
         upload=args.upload,
         go_build_target=args.go_build_target,
         cargo_manifest_dir=args.cargo_manifest_dir,
+        zig_manifest_dir=args.zig_manifest_dir,
+        zig_deps=zig_deps,
     )
     _emit(res, args.result_file)
     return 0
@@ -402,14 +405,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--result-file")
     p.set_defaults(func=_cmd_ai_repair)
 
-    p = sub.add_parser("build-deps", help="Build (and optionally upload) Go/Rust ${P}-deps.tar.xz to distfiles_repo")
+    p = sub.add_parser("build-deps", help="Build (and optionally upload) Go/Rust/Zig ${P}-deps.tar.xz to distfiles_repo")
     p.add_argument("--pkg", required=True, help="Package atom (category/name)")
     p.add_argument("--ver", required=True, help="Package version (e.g. 0.1.10)")
-    p.add_argument("--type", required=True, choices=["go", "rust"], help="Ecosystem dependency type")
+    p.add_argument("--type", required=True, choices=["go", "rust", "zig"], help="Ecosystem dependency type")
     p.add_argument("--src-url", required=True, help="Upstream source tarball URL")
     p.add_argument("--out-dir", default="/tmp/distfiles-deps", help="Output directory for ${P}-deps.tar.xz")
     p.add_argument("--go-build-target", default=".", help="Go package target for sanity build check")
     p.add_argument("--cargo-manifest-dir", default="", help="Subdirectory containing Cargo.toml if not repo root")
+    p.add_argument("--zig-manifest-dir", default="", help="Subdirectory containing build.zig.zon (for zig or hybrid rust+zig)")
+    p.add_argument("--zig-deps", default="", help="Optional comma-separated lazy Zig dependency names to include")
     p.add_argument("--upload", action="store_true", help="Upload tarball to overlay.distfiles_repo GitHub Release")
     p.add_argument("--result-file")
     p.set_defaults(func=_cmd_build_deps)

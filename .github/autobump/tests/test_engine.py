@@ -22,6 +22,7 @@ from engine.common import get_local_version, version_key
 from engine.context import _select_latest_ebuild
 from engine.deps import (
     DEPS_PLACEHOLDER,
+    ZigZonDep,
     _expand_ebuild_vars,
     deps_download_url,
     deps_ebuild_uri_template,
@@ -31,7 +32,9 @@ from engine.deps import (
     ebuild_needs_deps_resolution,
     extract_rust_git_sources,
     parse_primary_src_uri,
+    parse_zig_zon,
     rewrite_ebuild_deps_metadata,
+    vendor_zig_deps,
 )
 from engine.detect import filter_throttled_updates
 from engine.notify import extract_log_excerpt, format_telegram_event
@@ -596,6 +599,92 @@ build = { mode = "emerge-full" }
             self.assertTrue(new_eb.is_file())
             self.assertIn('MY_SIGN="1-abcdef123456-70000000"', new_eb.read_text(encoding="utf-8"))
             self.assertIn("DIST qqmusic-1.2.0_amd64.deb ", (pdir / "Manifest").read_text(encoding="utf-8"))
+
+    def test_parse_zig_zon_and_vendor_zig_deps(self) -> None:
+        import tarfile
+        from unittest.mock import patch
+
+        zon = """
+        // Top-level comment with // slashes
+        .{
+            .name = .demo,
+            .version = "1.0.0",
+            .minimum_zig_version = "0.16.0",
+            .dependencies = .{
+                .uucode = .{
+                    // URL contains https:// which must not be stripped as a comment
+                    .url = "https://example.invalid/uucode.tar.gz",
+                    .hash = "uucode-0.2.0-HASH",
+                },
+                .@"local-pkg" = .{
+                    .path = "./pkg/local",
+                    .lazy = true,
+                },
+                .unused_lazy = .{
+                    .url = "https://example.invalid/unused.tar.gz",
+                    .hash = "unused-1.0.0-HASH",
+                    .lazy = true,
+                },
+            },
+        }
+        """
+        min_ver, deps = parse_zig_zon(zon)
+        self.assertEqual(min_ver, "0.16.0")
+        self.assertEqual(
+            deps,
+            [
+                ZigZonDep(name="uucode", url="https://example.invalid/uucode.tar.gz", hash="uucode-0.2.0-HASH", path="", lazy=False),
+                ZigZonDep(name="local-pkg", url="", hash="", path="./pkg/local", lazy=True),
+                ZigZonDep(name="unused_lazy", url="https://example.invalid/unused.tar.gz", hash="unused-1.0.0-HASH", path="", lazy=True),
+            ],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "src"
+            (src / "pkg" / "local").mkdir(parents=True)
+            (src / "build.zig.zon").write_text(zon, encoding="utf-8")
+            (src / "pkg" / "local" / "build.zig.zon").write_text(
+                '.{ .dependencies = .{ .trans = .{ .url = "https://example.invalid/trans.tar.gz", .hash = "trans-0.1.0-HASH", .lazy = true } } }\n',
+                encoding="utf-8",
+            )
+
+            # Build real local tarballs with a single top-level dir to test stripping + transitive zon crawl
+            archives = root / "archives"
+            archives.mkdir()
+            for name, files in [
+                ("uucode.tar.gz", {"uucode-src/build.zig": "pub fn build() void {}\n"}),
+                (
+                    "trans.tar.gz",
+                    {
+                        "trans-src/build.zig.zon": '.{ .dependencies = .{ .leaf = .{ .url = "https://example.invalid/leaf.tar.gz", .hash = "leaf-0.1.0-HASH" } } }\n',
+                    },
+                ),
+                ("leaf.tar.gz", {"leaf-src/lib.zig": "pub const ok = true;\n"}),
+            ]:
+                with tarfile.open(archives / name, "w:gz") as tf:
+                    for rel, body in files.items():
+                        fp = root / "stage_file"
+                        fp.write_text(body, encoding="utf-8")
+                        tf.add(fp, arcname=rel)
+
+            def fake_download(url: str, dest: Path) -> Path:
+                fname = url.rsplit("/", 1)[-1]
+                dest.write_bytes((archives / fname).read_bytes())
+                return dest
+
+            out_dir = root / "zig_packages"
+            with patch("engine.deps.download_file", side_effect=fake_download):
+                got_min, count = vendor_zig_deps(src, out_dir, src_root=src, selected_lazy={"local-pkg"})
+
+            self.assertEqual(got_min, "0.16.0")
+            self.assertEqual(count, 3)
+            self.assertTrue((out_dir / "uucode-0.2.0-HASH" / "build.zig").is_file())
+            self.assertTrue((out_dir / "trans-0.1.0-HASH" / "build.zig.zon").is_file())
+            self.assertTrue((out_dir / "leaf-0.1.0-HASH" / "lib.zig").is_file())
+            self.assertFalse((out_dir / "unused-1.0.0-HASH").exists())
+            self.assertEqual(detect_deps_kind("inherit zig\n"), "zig")
+            self.assertEqual(detect_deps_kind("inherit cargo zig-utils\n", "rust-vendor"), "rust")
 
 
 if __name__ == "__main__":

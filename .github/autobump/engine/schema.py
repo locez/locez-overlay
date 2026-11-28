@@ -123,6 +123,8 @@ class PackageSpec:
     preserve_dists: tuple[str, ...] = ()
     go_build_target: str = ""
     cargo_manifest_dir: str = ""
+    zig_manifest_dir: str = ""
+    zig_deps: tuple[str, ...] = ()
     weekly_live_test: bool = False
 
     @property
@@ -300,6 +302,11 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
             raise ConfigError(f"{pkg}: preserve_dists must be a list of filename globs")
         preserve_dists = tuple(str(p) for p in raw_preserve_dists)
 
+        raw_zig_deps = pdata.get("zig_deps", ())
+        if not isinstance(raw_zig_deps, list | tuple):
+            raise ConfigError(f"{pkg}: zig_deps must be a list of Zig dependency names")
+        zig_deps = tuple(str(d) for d in raw_zig_deps)
+
         smoke_test = pdata.get("smoke_test", "").strip()
         if "\n" in smoke_test:
             raise ConfigError(
@@ -332,6 +339,8 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
             preserve_dists=preserve_dists,
             go_build_target=pdata.get("go_build_target", ""),
             cargo_manifest_dir=pdata.get("cargo_manifest_dir", ""),
+            zig_manifest_dir=str(pdata.get("zig_manifest_dir", "")),
+            zig_deps=zig_deps,
             weekly_live_test=bool(pdata.get("weekly_live_test", False)),
         )
 

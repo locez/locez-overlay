@@ -93,6 +93,8 @@ def bump_vendor_package(ctx: BumpContext, *, kind: DepsKind) -> None:
         upload=ctx.upload_vendor,
         go_build_target=spec.go_build_target or ".",
         cargo_manifest_dir=spec.cargo_manifest_dir,
+        zig_manifest_dir=spec.zig_manifest_dir,
+        zig_deps=spec.zig_deps,
     )
 
     eb_text = rewrite_ebuild_deps_metadata(
@@ -119,6 +121,11 @@ def bump_vendor_package(ctx: BumpContext, *, kind: DepsKind) -> None:
 def bump_rust_vendor(ctx: BumpContext) -> None:
     """Bump a Rust package by building/reusing ${P}-deps.tar.xz in distfiles_repo."""
     bump_vendor_package(ctx, kind="rust")
+
+
+def bump_zig_vendor(ctx: BumpContext) -> None:
+    """Bump a Zig package by building/reusing ${P}-deps.tar.xz in distfiles_repo."""
+    bump_vendor_package(ctx, kind="zig")
 
 
 def parse_crates_from_ebuild(eb_text: str) -> list[tuple[str, str]]:
