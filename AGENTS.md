@@ -14,7 +14,7 @@ This document is the primary operating manual for human maintainers and AI codin
   - `metadata/autobump.toml` — Single declarative source of truth for all package automation, build/test modes, retention policies, and notifications.
   - `.github/smoke/<category>/<pn>.sh` — Multi-line integration smoke-test scripts (shared helpers in `.github/smoke/_shared/`).
   - `.github/autobump/engine/` — 100% overlay-agnostic Python automation engine (stdlib only, Python 3.11+).
-  - `.github/autobump/engine/plugins/` — Registered bump strategies (`pypi`, `github-release`, `cider`, `proton-ge`, `dwproton`, `tencent-qq`, `wechat`, `feishu`, `dingtalk`, `wps-office`, `go-vendor`, `rust-vendor`, `rust-crates`, `kernel-xanmod`, `kernel-cachyos`).
+  - `.github/autobump/engine/plugins/` — Registered bump strategies (`pypi`, `github-release`, `cider`, `proton-ge`, `dwproton`, `tencent-qq`, `qqmusic`, `wechat`, `feishu`, `dingtalk`, `wps-office`, `go-vendor`, `rust-vendor`, `rust-crates`, `zig-vendor`, `kernel-xanmod`, `kernel-cachyos`).
   - `overlay.distfiles_repo` (`locez/locez-overlay-distfiles`) — Dedicated public GitHub repo hosting Go/Rust `${P}-deps.tar.xz` tarballs under release tag `${CATEGORY}-${PN}-${PV}`.
   - `.github/autobump/tests/test_engine.py` — Zero-dependency `unittest` suite.
   - `.github/actions/gentoo-build-test/action.yml` — Reusable Composite Action running real `gentoo/stage3` builds + smoke tests with daily Portage tree cache and weekly CI binpkg cache.
@@ -41,9 +41,9 @@ This document is the primary operating manual for human maintainers and AI codin
    ```bash
    pkgdev manifest <category>/<pn>   # or: ebuild <category>/<pn>/<pn>-<ver>.ebuild manifest
    ```
-3. **Register in `metadata/autobump.toml`** (mandatory for every package in the overlay):
-   - Add `[packages."<category>/<pn>"]` with `detect`, `strategy` (omit if `detect.type == "none"`), `retention`, `policy`, `build`, and `smoke_test`.
-   - If the package needs a multi-line smoke test, create `.github/smoke/<category>/<pn>.sh` (auto-discovered without extra TOML config).
+3. **Register in `metadata/autobump.toml` & add a smoke test script** (mandatory for every package in the overlay):
+   - Add `[packages."<category>/<pn>"]` using only standard top-level keys (`detect`, `strategy`, `cadence`, `retention`, `policy`, `build`, `weekly_live_test`, optional `smoke_test_script`). Place all strategy-specific parameters inside `strategy = { type = "...", ... }`.
+   - Create `.github/smoke/<category>/<pn>.sh` (auto-discovered by `schema.py`; inline `smoke_test` commands in `metadata/autobump.toml` are strictly disallowed).
    - If the package has a `9999` live ebuild, set `weekly_live_test = true`.
 4. **Preview the generated CI container script** to verify USE flags, test setup, and smoke test:
    ```bash
@@ -122,48 +122,46 @@ PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py live-packages
 ## 3. Declarative Automation (`metadata/autobump.toml`) & Smoke Tests
 
 ### `metadata/autobump.toml` Rules
-- Must remain **purely declarative**. **Never** embed multi-line shell scripts inside `metadata/autobump.toml`.
-- Schema validation in `.github/autobump/engine/schema.py` eagerly rejects invalid `build.mode`, `retention.type`, `retention.count`, or `retention.guard` via `ConfigError`.
+- Must remain **purely declarative**. **NEVER** embed shell commands (`smoke_test`) inside `metadata/autobump.toml` — `schema.py` rejects `smoke_test` and any unknown top-level package keys via `ConfigError`.
+- Strategy-specific options MUST live inside `strategy = { type = "...", ... }` (never flattened to top-level package keys).
+- Schema validation in `.github/autobump/engine/schema.py` eagerly rejects invalid `build.mode`, `retention.type`, `retention.count`, `retention.guard`, unknown top-level keys, or inline `smoke_test` via `ConfigError`.
 
 Minimal package examples:
 
 ```toml
-# Example 1: GitHub release C/Python package with unit tests & one-line smoke test
+# Example 1: GitHub release C/Python package with unit tests (smoke test in .github/smoke/category/example-app.sh)
 [packages."category/example-app"]
 detect = { type = "nvchecker", source = "github", github = "owner/repo", use_latest_release = true, prefix = "v" }
-strategy = "github-release"
-url_template = "https://github.com/owner/repo/releases/download/v{ver}/example-{ver}.tar.xz"
-dist_template = "example-{ver}.tar.xz"
+strategy = { type = "github-release", url_template = "https://github.com/owner/repo/releases/download/v{ver}/example-{ver}.tar.xz", dist_template = "example-{ver}.tar.xz" }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
-smoke_test = "example-app --version"
 
-# Example 2: Prebuilt binary package without autobump
+# Example 2: Prebuilt binary package without autobump (smoke test in .github/smoke/category/example-bin.sh)
 [packages."category/example-bin"]
 detect = { type = "none" }
 build = { mode = "emerge-bin", use = ["bwrap"] }
-smoke_test = "test -x /usr/bin/example-bin && test -f /usr/share/applications/example.desktop"
 ```
 
-Field quick reference:
+Field quick reference (only these top-level keys are allowed under `[packages."<cat>/<pn>"]`):
 - `detect`: `{ type = "nvchecker", ... }`, `{ type = "wechat-head" }`, or `{ type = "none" }`.
-- `strategy`: Registered key in `STRATEGIES`. Strategy-specific fields:
+- `strategy`: String (`"pypi"`) or inline table (`{ type = "<key>", ... }`) matching a registered key in `STRATEGIES`. Strategy-specific options live inside the `strategy` table:
   - `github-release`: requires `url_template` and `dist_template` (`{ver}`, `{tag_ver}`, `{pn}` placeholders); optional `tag_ver_strip_prefix`, `extra_dists` (list of `{ url_template, dist_template }`), and `preserve_dists` (globs of static `Manifest` `DIST` entries to keep untouched across bumps).
-  - `go-vendor`: optional `go_build_target` (builds & uploads `${P}-deps.tar.xz` to `overlay.distfiles_repo` under tag `${CATEGORY}-${PN}-${PV}`).
-  - `rust-vendor` / `rust-crates`: optional `cargo_manifest_dir` if `Cargo.toml` is in a subdirectory (`rust-vendor` uploads `${P}-deps.tar.xz` to `overlay.distfiles_repo`; `rust-crates` refreshes `CRATES`/`GIT_CRATES`/`LICENSE` in-place via `pycargoebuild -i`).
+  - `go-vendor`: optional `build_target` (builds & uploads `${P}-deps.tar.xz` to `overlay.distfiles_repo` under tag `${CATEGORY}-${PN}-${PV}`).
+  - `rust-vendor` / `rust-crates`: optional `manifest_dir` if `Cargo.toml` is in a subdirectory, and optional `zig = { manifest_dir = "...", deps = [...] }` for hybrid Rust+Zig builds (`rust-vendor` uploads `${P}-deps.tar.xz` to `overlay.distfiles_repo`; `rust-crates` refreshes `CRATES`/`GIT_CRATES`/`LICENSE` in-place via `pycargoebuild -i`).
+  - `zig-vendor`: optional `manifest_dir` and `deps` (lazy Zig dependency allowlist).
 - `cadence`: `"daily"` (default) or `"weekly"` (checked on Mondays during scheduled `autobump.yml` runs, and always checked on manual `workflow_dispatch`).
 - `retention`: `{ type = "replace" }` or `{ type = "keep-latest", count = N }`, optional `guard = "keep-last-zfs-compatible"`.
 - `policy`: `"auto-merge"` (default for verified packages) or `"pr-only"`.
 - `build`:
   - `mode`: `"emerge-full"` (build from source), `"emerge-bin"` (prebuilt binary/deb/tarball), `"kernel-sources"` (supports `use_sets` + `check_kconfig = true`), or `"dep-resolve"` (`emerge --pretend`, e.g. virtuals).
   - `use` / `use_sets`, `test = true|false`, `extra_pkgs = [...]`, `env = {...}`.
+- `smoke_test_script`: Optional explicit path override if sharing a script; normally omitted because `.github/smoke/<category>/<pn>.sh` is auto-discovered.
 - `weekly_live_test`: `true` for packages that maintain a `9999` live ebuild.
 
 ### `.github/smoke/` Convention
-- Short single-line checks go in `smoke_test` inside `metadata/autobump.toml`.
-- Multi-line or structured integration checks go in `.github/smoke/<category>/<pn>.sh` (auto-discovered by `schema.py`).
-- Shared helper scripts go in `.github/smoke/_shared/` (e.g. `.github/smoke/_shared/proton-compat.sh`).
+- **ALL** package smoke tests MUST live in `.github/smoke/<category>/<pn>.sh` (auto-discovered by `schema.py` without extra TOML config). Inline `smoke_test` in `metadata/autobump.toml` is strictly forbidden.
+- Shared helper scripts go in `.github/smoke/_shared/` (e.g. `.github/smoke/_shared/check-elf.sh`, `.github/smoke/_shared/proton-compat.sh`), invoked via `dirname "${BASH_SOURCE[0]}"`.
 - Every script must start with `#!/usr/bin/env bash`, use `set -euo pipefail`, and pass `bash -n`.
 - In `python-compat.yml`, `builder.py` exports `EPYTHON=python3.XX` inside the smoke-test subshell so `python3` resolves to the target interpreter under test.
 

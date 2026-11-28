@@ -14,7 +14,7 @@ from typing import Any
 from .builder import render_container_test_script, render_health_check_script, resolve_target_atom
 from .common import detect_ebuild_arches, get_local_version
 from .context import collect_failure_context
-from .deps import build_deps_for_package, resolve_packages_deps
+from .deps import DepsOptions, build_deps_for_package, resolve_packages_deps
 from .detect import detect_updates
 from .notify import close_github_failure_issue, extract_log_excerpt, notify_event
 from .plugins import bump_package
@@ -294,10 +294,12 @@ def _cmd_build_deps(cfg: AutomationConfig, args: argparse.Namespace) -> int:
         src_url=args.src_url,
         out_dir=Path(args.out_dir),
         upload=args.upload,
-        go_build_target=args.go_build_target,
-        cargo_manifest_dir=args.cargo_manifest_dir,
-        zig_manifest_dir=args.zig_manifest_dir,
-        zig_deps=zig_deps,
+        options=DepsOptions(
+            go_build_target=args.go_build_target,
+            cargo_manifest_dir=args.cargo_manifest_dir,
+            zig_manifest_dir=args.zig_manifest_dir,
+            zig_deps=zig_deps,
+        ),
     )
     _emit(res, args.result_file)
     return 0

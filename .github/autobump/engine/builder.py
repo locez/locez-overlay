@@ -27,7 +27,7 @@ def _render_smoke_block(
     *,
     python_target: str = "",
 ) -> list[str]:
-    if not spec.smoke_test and not spec.smoke_test_script:
+    if not spec.smoke_test_script:
         return []
     block: list[str] = [f"echo '=== [smoke_test] {spec.pkg} ==='"]
     if spec.build.extra_pkgs:
@@ -40,11 +40,8 @@ def _render_smoke_block(
         block.append(f"  export EPYTHON={shlex.quote(py_exe)}")
     for k, v in sorted(spec.build.env.items()):
         block.append(f"  export {k}={shlex.quote(v)}")
-    if spec.smoke_test_script:
-        script_path = f"{overlay_mount.rstrip('/')}/{spec.smoke_test_script.lstrip('/')}"
-        block.append(f"  bash {shlex.quote(script_path)}")
-    if spec.smoke_test:
-        block.append(f"  {spec.smoke_test}")
+    script_path = f"{overlay_mount.rstrip('/')}/{spec.smoke_test_script.lstrip('/')}"
+    block.append(f"  bash {shlex.quote(script_path)}")
     block.append(")")
     return block
 

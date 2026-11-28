@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .base import BumpContext
-from .rust import bump_vendor_package
+from .vendor import bump_vendor_package
 
 
 def bump_go_vendor(ctx: BumpContext) -> None:

@@ -14,9 +14,10 @@ from .cn_apps import bump_dingtalk, bump_feishu, bump_wps_office
 from .go_vendor import bump_go_vendor
 from .kernel import bump_cachyos, bump_xanmod
 from .proton import bump_dwproton, bump_proton_ge
-from .rust import bump_rust_crates, bump_rust_vendor, bump_zig_vendor
+from .rust import bump_rust_crates, bump_rust_vendor
 from .simple import bump_cider, bump_github_release, bump_pypi
 from .tencent import bump_qqmusic, bump_tencent_qq, bump_wechat
+from .zig import bump_zig_vendor
 
 __all__ = ["BumpContext", "STRATEGIES", "Strategy", "bump_package"]
 

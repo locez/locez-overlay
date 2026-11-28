@@ -76,20 +76,25 @@ def bump_pypi(ctx: BumpContext) -> None:
 
 
 def bump_github_release(ctx: BumpContext) -> None:
-    if not ctx.spec.url_template or not ctx.spec.dist_template:
+    opts = ctx.spec.strategy_opts
+    url_template = str(opts.get("url_template", ""))
+    dist_template = str(opts.get("dist_template", ""))
+    if not url_template or not dist_template:
         raise BumpError(
-            f"{ctx.spec.pkg}: github-release strategy requires url_template and dist_template in autobump.toml"
+            f"{ctx.spec.pkg}: github-release strategy requires strategy.url_template and strategy.dist_template"
         )
     tag_ver = ctx.target_ver
-    if ctx.spec.tag_ver_strip_prefix and tag_ver.startswith(ctx.spec.tag_ver_strip_prefix):
-        tag_ver = tag_ver[len(ctx.spec.tag_ver_strip_prefix) :]
+    strip_prefix = str(opts.get("tag_ver_strip_prefix", ""))
+    if strip_prefix and tag_ver.startswith(strip_prefix):
+        tag_ver = tag_ver[len(strip_prefix) :]
     fmt = {"ver": ctx.target_ver, "tag_ver": tag_ver, "pn": ctx.spec.pn}
     dist_map: list[tuple[str, str]] = [
-        (ctx.spec.dist_template.format(**fmt), ctx.spec.url_template.format(**fmt))
+        (dist_template.format(**fmt), url_template.format(**fmt))
     ]
-    for extra in ctx.spec.extra_dists:
-        dist_map.append((extra.dist_template.format(**fmt), extra.url_template.format(**fmt)))
-    _replace_single_ebuild(ctx, dist_map, preserve_dists=ctx.spec.preserve_dists)
+    for extra in opts.get("extra_dists", ()):
+        dist_map.append((str(extra["dist_template"]).format(**fmt), str(extra["url_template"]).format(**fmt)))
+    preserve_dists = tuple(str(p) for p in opts.get("preserve_dists", ()))
+    _replace_single_ebuild(ctx, dist_map, preserve_dists=preserve_dists)
 
 
 def bump_cider(ctx: BumpContext) -> None:

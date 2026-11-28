@@ -26,6 +26,7 @@ from engine.deps import (
     _expand_ebuild_vars,
     deps_download_url,
     deps_ebuild_uri_template,
+    deps_options_from_spec,
     deps_release_tag,
     deps_tarball_name,
     detect_deps_kind,
@@ -56,11 +57,11 @@ from engine.retention import ebuild_forbids_zfs, ebuild_supports_zfs, must_keep_
 from engine.schema import (
     AutomationConfig,
     ConfigError,
-    ExtraDistSpec,
     OverlayConfig,
     PackageSpec,
     _parse_build_spec,
     _parse_retention_spec,
+    _parse_strategy_spec,
     generate_nvchecker_toml,
     load_config,
 )
@@ -81,6 +82,17 @@ class TestSchemaAndConfig(unittest.TestCase):
                     get_local_version(self.cfg.repo_root, pkg, spec.strategy),
                     f"Missing local version for {pkg}",
                 )
+            if spec.build.mode != "dep-resolve":
+                self.assertTrue(
+                    spec.smoke_test_script and (REPO_ROOT / spec.smoke_test_script).is_file(),
+                    f"Missing .github/smoke script for {pkg}",
+                )
+        herdr_opts = deps_options_from_spec(self.cfg.packages["app-misc/herdr"])
+        self.assertEqual(herdr_opts.zig_manifest_dir, "vendor/libghostty-vt")
+        self.assertIn("uucode", set(herdr_opts.zig_deps) | {"uucode"})
+        self.assertIn("highway", herdr_opts.zig_deps)
+        tsshd_opts = deps_options_from_spec(self.cfg.packages["net-misc/tsshd"])
+        self.assertEqual(tsshd_opts.go_build_target, "./cmd/tsshd")
 
     def test_invalid_config_rejected_eagerly(self) -> None:
         with self.assertRaises(ConfigError):
@@ -91,6 +103,27 @@ class TestSchemaAndConfig(unittest.TestCase):
             _parse_retention_spec("cat/pkg", {"type": "keep-latest", "count": 0})
         with self.assertRaises(ConfigError):
             _parse_retention_spec("cat/pkg", {"guard": "unknown-guard"})
+        with self.assertRaises(ConfigError):
+            _parse_strategy_spec("cat/pkg", {})
+        with self.assertRaises(ConfigError):
+            _parse_strategy_spec("cat/pkg", {"type": "rust-vendor", "zig": "not-a-table"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "metadata").mkdir()
+            (root / "metadata" / "autobump.toml").write_text(
+                '[overlay]\nname = "t"\n[packages."cat/demo"]\ndetect = { type = "none" }\nsmoke_test = "true"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ConfigError):
+                load_config(root)
+
+            (root / "metadata" / "autobump.toml").write_text(
+                '[overlay]\nname = "t"\n[packages."cat/demo"]\ndetect = { type = "none" }\nurl_template = "https://example.invalid"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ConfigError):
+                load_config(root)
 
     def test_generate_nvchecker_toml(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,17 +240,19 @@ class TestRetentionAndKernelHelpers(unittest.TestCase):
             spec = PackageSpec(
                 pkg="cat/demo",
                 strategy="github-release",
+                strategy_opts={
+                    "tag_ver_strip_prefix": "0_pre",
+                    "url_template": "https://example.invalid/tags/b{tag_ver}.tar.gz",
+                    "dist_template": "{pn}-{ver}.tar.gz",
+                    "extra_dists": [
+                        {
+                            "url_template": "https://example.invalid/releases/b{tag_ver}/{pn}-b{tag_ver}-ui.tar.gz",
+                            "dist_template": "{pn}-{ver}-ui.tar.gz",
+                        }
+                    ],
+                    "preserve_dists": ["static-model-*.gguf"],
+                },
                 cadence="weekly",
-                tag_ver_strip_prefix="0_pre",
-                url_template="https://example.invalid/tags/b{tag_ver}.tar.gz",
-                dist_template="{pn}-{ver}.tar.gz",
-                extra_dists=(
-                    ExtraDistSpec(
-                        url_template="https://example.invalid/releases/b{tag_ver}/{pn}-b{tag_ver}-ui.tar.gz",
-                        dist_template="{pn}-{ver}-ui.tar.gz",
-                    ),
-                ),
-                preserve_dists=("static-model-*.gguf",),
             )
             cfg = AutomationConfig(
                 repo_root=root,
@@ -674,7 +709,7 @@ build = { mode = "emerge-full" }
                 return dest
 
             out_dir = root / "zig_packages"
-            with patch("engine.deps.download_file", side_effect=fake_download):
+            with patch("engine.deps.zig.download_file", side_effect=fake_download):
                 got_min, count = vendor_zig_deps(src, out_dir, src_root=src, selected_lazy={"local-pkg"})
 
             self.assertEqual(got_min, "0.16.0")
@@ -685,6 +720,15 @@ build = { mode = "emerge-full" }
             self.assertFalse((out_dir / "unused-1.0.0-HASH").exists())
             self.assertEqual(detect_deps_kind("inherit zig\n"), "zig")
             self.assertEqual(detect_deps_kind("inherit cargo zig-utils\n", "rust-vendor"), "rust")
+
+            # Verify plugins & ecosystem deps modules stay cleanly decoupled
+            from engine.plugins.go_vendor import bump_go_vendor
+            from engine.plugins.rust import bump_rust_vendor
+            from engine.plugins.zig import bump_zig_vendor
+
+            self.assertIs(STRATEGIES["go-vendor"], bump_go_vendor)
+            self.assertIs(STRATEGIES["rust-vendor"], bump_rust_vendor)
+            self.assertIs(STRATEGIES["zig-vendor"], bump_zig_vendor)
 
 
 if __name__ == "__main__":

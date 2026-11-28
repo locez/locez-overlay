@@ -1,5 +1,9 @@
 # Declarative automation configuration for this Gentoo overlay.
 # Everything in .github/autobump/engine/ is overlay-agnostic and driven by this file.
+#
+# Strict schema conventions:
+# - Strategy-specific options live inside `strategy = { type = "...", ... }` (never top-level).
+# - Inline `smoke_test` shell commands are forbidden; place smoke tests in `.github/smoke/<cat>/<pn>.sh`.
 
 [overlay]
 name = "locez"
@@ -48,7 +52,7 @@ untracked_packages = [
 ]
 
 # =============================================================================
-# Package Specifications
+# Package Specifications (smoke tests auto-discovered from .github/smoke/<cat>/<pn>.sh)
 # =============================================================================
 
 [packages."app-emulation/dwproton-bin"]
@@ -67,26 +71,17 @@ build = { mode = "emerge-bin", use = ["abi_x86_32"] }
 
 [packages."app-misc/herdr"]
 detect = { type = "nvchecker", source = "github", github = "herdrdev/herdr", use_latest_release = true, prefix = "v" }
-strategy = "rust-vendor"
-zig_manifest_dir = "vendor/libghostty-vt"
-zig_deps = ["zlib", "highway", "wuffs", "translate_c", "iterm2_themes"]
+strategy = { type = "rust-vendor", zig = { manifest_dir = "vendor/libghostty-vt", deps = ["zlib", "highway", "wuffs", "translate_c", "iterm2_themes"] } }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = false }
-smoke_test = "herdr --version && test -f /usr/share/bash-completion/completions/herdr && test -f /usr/share/zsh/site-functions/_herdr && test -f /usr/share/fish/vendor_completions.d/herdr.fish"
 
 [packages."app-misc/herdr-bin"]
 detect = { type = "nvchecker", source = "github", github = "herdrdev/herdr", use_latest_release = true, prefix = "v" }
-strategy = "github-release"
-url_template = "https://github.com/herdrdev/herdr/releases/download/v{ver}/herdr-linux-x86_64"
-dist_template = "herdr-bin-{ver}-amd64"
-extra_dists = [
-  { url_template = "https://github.com/herdrdev/herdr/releases/download/v{ver}/herdr-linux-aarch64", dist_template = "herdr-bin-{ver}-arm64" },
-]
+strategy = { type = "github-release", url_template = "https://github.com/herdrdev/herdr/releases/download/v{ver}/herdr-linux-x86_64", dist_template = "herdr-bin-{ver}-amd64", extra_dists = [{ url_template = "https://github.com/herdrdev/herdr/releases/download/v{ver}/herdr-linux-aarch64", dist_template = "herdr-bin-{ver}-arm64" }] }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "herdr --version && test -f /usr/share/bash-completion/completions/herdr && test -f /usr/share/zsh/site-functions/_herdr && test -f /usr/share/fish/vendor_completions.d/herdr.fish"
 
 [packages."dev-python/pure-protobuf"]
 detect = { type = "nvchecker", source = "pypi", pypi = "pure-protobuf" }
@@ -94,7 +89,6 @@ strategy = "pypi"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
-smoke_test = "python3 -c 'from pure_protobuf.annotations import Field; from pure_protobuf.message import BaseMessage'"
 
 [packages."dev-python/qasync"]
 detect = { type = "nvchecker", source = "pypi", pypi = "qasync" }
@@ -102,27 +96,20 @@ strategy = "pypi"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = false }
-smoke_test = "python3 -c 'import qasync'"
 
 [packages."media-libs/libdicom"]
 detect = { type = "nvchecker", source = "github", github = "ImagingDataCommons/libdicom", use_latest_release = true, prefix = "v" }
-strategy = "github-release"
-url_template = "https://github.com/ImagingDataCommons/libdicom/releases/download/v{ver}/libdicom-{ver}.tar.xz"
-dist_template = "libdicom-{ver}.tar.xz"
+strategy = { type = "github-release", url_template = "https://github.com/ImagingDataCommons/libdicom/releases/download/v{ver}/libdicom-{ver}.tar.xz", dist_template = "libdicom-{ver}.tar.xz" }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
-smoke_test = "pkg-config --exists libdicom && pkg-config --libs libdicom"
 
 [packages."media-libs/openslide"]
 detect = { type = "nvchecker", source = "github", github = "openslide/openslide", use_latest_release = true, prefix = "v" }
-strategy = "github-release"
-url_template = "https://github.com/openslide/openslide/releases/download/v{ver}/openslide-{ver}.tar.xz"
-dist_template = "openslide-{ver}.tar.xz"
+strategy = { type = "github-release", url_template = "https://github.com/openslide/openslide/releases/download/v{ver}/openslide-{ver}.tar.xz", dist_template = "openslide-{ver}.tar.xz" }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = false }
-smoke_test = "pkg-config --exists openslide && pkg-config --libs openslide"
 
 [packages."media-sound/cider"]
 detect = { type = "nvchecker", source = "regex", url = "https://repo.cider.sh/apt/pool/main/", regex = 'cider-v([0-9]+(?:\.[0-9]+)+)-linux-x64\.deb' }
@@ -130,7 +117,6 @@ strategy = "cider"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin" }
-smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/cider/Cider && test -L /usr/bin/cider && test -f /usr/share/applications/cider.desktop"
 
 [packages."net-im/tencent-qq"]
 detect = { type = "nvchecker", source = "regex", url = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js", regex = 'QQ_([0-9]+(?:\.[0-9]+)+_[0-9]+)_amd64_01\.deb', from_pattern = "_([0-9]+)$", to_pattern = "_p\\1" }
@@ -138,7 +124,6 @@ strategy = "tencent-qq"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin", use = ["bwrap", "system-fdk-aac", "system-libssh2", "system-openh264", "system-zlib"] }
-smoke_test = "test -x /usr/bin/qq && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/QQ/qq && test -f /usr/share/applications/qq.desktop"
 
 [packages."net-im/wechat"]
 detect = { type = "wechat-head" }
@@ -146,16 +131,13 @@ strategy = "wechat"
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-bin", use = ["bwrap"] }
-smoke_test = "test -x /usr/bin/wechat && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/wechat/wechat && test -f /usr/share/applications/wechat.desktop"
 
 [packages."net-misc/tsshd"]
 detect = { type = "nvchecker", source = "github", github = "trzsz/tsshd", use_latest_release = true, prefix = "v" }
-strategy = "go-vendor"
-go_build_target = "./cmd/tsshd"
+strategy = { type = "go-vendor", build_target = "./cmd/tsshd" }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
-smoke_test = "tsshd -v"
 
 [packages."sys-kernel/xanmod-sources"]
 detect = { type = "nvchecker", source = "gitlab", gitlab = "xanmod/linux", use_max_tag = true, include_regex = "[0-9]+\\.[0-9]+\\.[0-9]+-xanmod[0-9]+", from_pattern = "-xanmod[0-9]+$", to_pattern = "" }
@@ -163,7 +145,6 @@ strategy = "kernel-xanmod"
 retention = { type = "replace", guard = "keep-last-zfs-compatible" }
 policy = "auto-merge"
 build = { mode = "kernel-sources", use_sets = [["-zfs"]], check_kconfig = true }
-smoke_test = "test -f /usr/src/linux-*-xanmod*/Makefile"
 
 [packages."sys-kernel/cachyos-sources"]
 detect = { type = "nvchecker", source = "github", github = "CachyOS/linux", use_max_tag = true, include_regex = "cachyos-[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+", from_pattern = "^cachyos-", to_pattern = "" }
@@ -171,17 +152,57 @@ strategy = "kernel-cachyos"
 retention = { type = "replace", guard = "keep-last-zfs-compatible" }
 policy = "auto-merge"
 build = { mode = "kernel-sources", use_sets = [["bore", "rt", "thin", "-zfs"], ["-bore", "prjc", "-zfs"]], check_kconfig = true }
-smoke_test = "test -f /usr/src/linux-*-cachyos*/Makefile"
 
 [packages."x11-misc/flatpak-xdg-utils"]
 detect = { type = "nvchecker", source = "github", github = "flatpak/flatpak-xdg-utils", use_latest_release = true }
-strategy = "github-release"
-url_template = "https://github.com/flatpak/flatpak-xdg-utils/releases/download/{ver}/flatpak-xdg-utils-{ver}.tar.xz"
-dist_template = "flatpak-xdg-utils-{ver}.tar.xz"
+strategy = { type = "github-release", url_template = "https://github.com/flatpak/flatpak-xdg-utils/releases/download/{ver}/flatpak-xdg-utils-{ver}.tar.xz", dist_template = "flatpak-xdg-utils-{ver}.tar.xz" }
 retention = { type = "replace" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = false }
-smoke_test = "test -x /usr/bin/flatpak-spawn && test -x /usr/lib/flatpak-xdg-utils/xdg-open"
+
+[packages."media-sound/qqmusic"]
+detect = { type = "nvchecker", source = "regex", url = "https://y.qq.com/download/download.html", regex = 'qqmusic_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
+strategy = "qqmusic"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+
+[packages."app-office/bytedance-feishu"]
+detect = { type = "nvchecker", source = "regex", url = "https://www.feishu.cn/api/downloads", regex = 'Feishu-linux_x64-([0-9]+(?:\.[0-9]+)+)\.deb' }
+strategy = "feishu"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+
+[packages."app-office/wps-office"]
+detect = { type = "nvchecker", source = "regex", url = "https://linux.wps.cn/", regex = 'wps-office_([0-9]+(?:\.[0-9]+)+)\.AK\.preread\.sw\.Personal_[0-9]+_amd64\.deb' }
+strategy = "wps-office"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+
+[packages."net-im/dingtalk"]
+detect = { type = "nvchecker", source = "httpheader", url = "https://www.dingtalk.com/win/d/qd=linux_amd64", method = "GET", follow_redirects = false, header = "location", regex = 'com\.alibabainc\.dingtalk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
+strategy = "dingtalk"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+
+[packages."net-misc/baidunetdisk"]
+detect = { type = "nvchecker", source = "regex", url = "https://pan.baidu.com/disk/cmsdata?do=client", regex = 'baidunetdisk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
+strategy = { type = "github-release", url_template = "https://issuecdn.baidupcs.com/issue/netdisk/LinuxGuanjia/{ver}/baidunetdisk_{ver}_amd64.deb", dist_template = "baidunetdisk_{ver}_amd64.deb" }
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-bin" }
+
+[packages."sci-ml/llama-cpp"]
+detect = { type = "nvchecker", source = "github", github = "ggml-org/llama.cpp", use_max_tag = true, include_regex = "b[0-9]+", from_pattern = "^b([0-9]+)$", to_pattern = "0_pre\\1" }
+strategy = { type = "github-release", tag_ver_strip_prefix = "0_pre", url_template = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b{tag_ver}.tar.gz", dist_template = "llama-cpp-{ver}.tar.gz", extra_dists = [{ url_template = "https://github.com/ggml-org/llama.cpp/releases/download/b{tag_ver}/llama-b{tag_ver}-ui.tar.gz", dist_template = "llama-cpp-{ver}-ui.tar.gz" }], preserve_dists = ["ggml-org_models_tinyllamas_*.gguf"] }
+cadence = "weekly"
+retention = { type = "replace" }
+policy = "auto-merge"
+build = { mode = "emerge-full", use = ["-cuda", "-rocm", "-native", "-lto"], test = false }
+weekly_live_test = true
 
 # =============================================================================
 # Non-autobumped packages (still participate in PR build-test & weekly health)
@@ -190,91 +211,27 @@ smoke_test = "test -x /usr/bin/flatpak-spawn && test -x /usr/lib/flatpak-xdg-uti
 [packages."app-i18n/rime-ice"]
 detect = { type = "none" }
 build = { mode = "emerge-full", use = ["base", "english", "opencc", "tencent", "-lua"], test = false }
-smoke_test = "test -f /usr/share/rime-data/rime_ice.schema.yaml"
 weekly_live_test = true
 
 [packages."app-misc/bilihud"]
 detect = { type = "none" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
-smoke_test = "python3 -c 'import bilihud' && test -f /usr/share/applications/bilihud.desktop"
 weekly_live_test = true
 
 [packages."media-plugins/kotonoha"]
 detect = { type = "none" }
 policy = "auto-merge"
 build = { mode = "emerge-full", test = true }
-smoke_test = "python3 -c 'import kotonoha' && test -f /usr/share/applications/kotonoha.desktop"
 weekly_live_test = true
-
-[packages."media-sound/qqmusic"]
-detect = { type = "nvchecker", source = "regex", url = "https://y.qq.com/download/download.html", regex = 'qqmusic_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
-strategy = "qqmusic"
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-bin" }
-smoke_test = "test -x /usr/bin/qqmusic && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/qqmusic/qqmusic"
 
 [packages."games-action/minecraft-launcher"]
 detect = { type = "none" }
 build = { mode = "emerge-bin", use = ["bwrap"] }
-smoke_test = "test -x /opt/minecraft-launcher/minecraft-launcher && test -x /opt/minecraft-launcher/minecraft-launcher-wrapper"
-
-[packages."app-office/bytedance-feishu"]
-detect = { type = "nvchecker", source = "regex", url = "https://www.feishu.cn/api/downloads", regex = 'Feishu-linux_x64-([0-9]+(?:\.[0-9]+)+)\.deb' }
-strategy = "feishu"
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-bin" }
-smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/bytedance/feishu/feishu && test -L /usr/bin/bytedance-feishu-stable && test -f /usr/share/applications/bytedance-feishu.desktop"
-
-[packages."app-office/wps-office"]
-detect = { type = "nvchecker", source = "regex", url = "https://linux.wps.cn/", regex = 'wps-office_([0-9]+(?:\.[0-9]+)+)\.AK\.preread\.sw\.Personal_[0-9]+_amd64\.deb' }
-strategy = "wps-office"
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-bin" }
-smoke_test = "test -x /usr/bin/wps && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/kingsoft/wps-office/office6/wps && ls /usr/share/applications/wps-office-*.desktop >/dev/null"
 
 [packages."media-fonts/ttf-wps-fonts"]
 detect = { type = "none" }
 build = { mode = "emerge-full", test = false }
-smoke_test = "test -d /usr/share/fonts/wps-fonts && ls /usr/share/fonts/wps-fonts/*.ttf /usr/share/fonts/wps-fonts/*.TTF >/dev/null 2>&1"
-weekly_live_test = true
-
-[packages."net-im/dingtalk"]
-detect = { type = "nvchecker", source = "httpheader", url = "https://www.dingtalk.com/win/d/qd=linux_amd64", method = "GET", follow_redirects = false, header = "location", regex = 'com\.alibabainc\.dingtalk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
-strategy = "dingtalk"
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-bin" }
-smoke_test = "test -L /usr/bin/dingtalk && bash /overlay/.github/smoke/_shared/check-elf.sh /opt/apps/com.alibabainc.dingtalk/files/[0-9]*/com.alibabainc.dingtalk && test -f /usr/share/applications/com.alibabainc.dingtalk.desktop"
-
-[packages."net-misc/baidunetdisk"]
-detect = { type = "nvchecker", source = "regex", url = "https://pan.baidu.com/disk/cmsdata?do=client", regex = 'baidunetdisk_([0-9]+(?:\.[0-9]+)+)_amd64\.deb' }
-strategy = "github-release"
-url_template = "https://issuecdn.baidupcs.com/issue/netdisk/LinuxGuanjia/{ver}/baidunetdisk_{ver}_amd64.deb"
-dist_template = "baidunetdisk_{ver}_amd64.deb"
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-bin" }
-smoke_test = "bash /overlay/.github/smoke/_shared/check-elf.sh /opt/baidunetdisk/baidunetdisk && test -L /opt/bin/baidunetdisk && test -f /usr/share/applications/baidunetdisk.desktop"
-
-[packages."sci-ml/llama-cpp"]
-detect = { type = "nvchecker", source = "github", github = "ggml-org/llama.cpp", use_max_tag = true, include_regex = "b[0-9]+", from_pattern = "^b([0-9]+)$", to_pattern = "0_pre\\1" }
-strategy = "github-release"
-cadence = "weekly"
-tag_ver_strip_prefix = "0_pre"
-url_template = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b{tag_ver}.tar.gz"
-dist_template = "llama-cpp-{ver}.tar.gz"
-extra_dists = [
-  { url_template = "https://github.com/ggml-org/llama.cpp/releases/download/b{tag_ver}/llama-b{tag_ver}-ui.tar.gz", dist_template = "llama-cpp-{ver}-ui.tar.gz" },
-]
-preserve_dists = ["ggml-org_models_tinyllamas_*.gguf"]
-retention = { type = "replace" }
-policy = "auto-merge"
-build = { mode = "emerge-full", use = ["-cuda", "-rocm", "-native", "-lto"], test = false }
-smoke_test = "llama-cli --version && llama-server --version"
 weekly_live_test = true
 
 [packages."virtual/linux-sources"]

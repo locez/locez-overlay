@@ -22,6 +22,18 @@ VALID_RETENTION_TYPES: frozenset[str] = frozenset({"replace", "keep-latest"})
 VALID_RETENTION_GUARDS: frozenset[str] = frozenset({"none", "keep-last-zfs-compatible"})
 VALID_DETECT_TYPES: frozenset[str] = frozenset({"none", "nvchecker", "wechat-head"})
 VALID_TELEGRAM_EVENTS: frozenset[str] = frozenset({"failed", "ai_draft_pr", "zfs_unlocked", "health_alert", "merged"})
+VALID_PACKAGE_KEYS: frozenset[str] = frozenset(
+    {
+        "detect",
+        "strategy",
+        "cadence",
+        "retention",
+        "policy",
+        "build",
+        "smoke_test_script",
+        "weekly_live_test",
+    }
+)
 
 
 class ConfigError(ValueError):
@@ -100,31 +112,16 @@ class RetentionSpec:
 
 
 @dataclass(frozen=True)
-class ExtraDistSpec:
-    url_template: str
-    dist_template: str
-
-
-@dataclass(frozen=True)
 class PackageSpec:
     pkg: str
     detect: dict[str, Any] = field(default_factory=dict)
     strategy: str = ""
+    strategy_opts: dict[str, Any] = field(default_factory=dict)
     cadence: Cadence = "daily"
     retention: RetentionSpec = field(default_factory=RetentionSpec)
     policy: MergePolicy = "pr-only"
     build: BuildSpec = field(default_factory=BuildSpec)
-    smoke_test: str = ""
     smoke_test_script: str = ""
-    url_template: str = ""
-    dist_template: str = ""
-    tag_ver_strip_prefix: str = ""
-    extra_dists: tuple[ExtraDistSpec, ...] = ()
-    preserve_dists: tuple[str, ...] = ()
-    go_build_target: str = ""
-    cargo_manifest_dir: str = ""
-    zig_manifest_dir: str = ""
-    zig_deps: tuple[str, ...] = ()
     weekly_live_test: bool = False
 
     @property
@@ -207,6 +204,39 @@ def _parse_retention_spec(pkg: str, raw: dict[str, Any]) -> RetentionSpec:
     return RetentionSpec(type=rtype, count=count, guard=guard)
 
 
+def _parse_strategy_spec(pkg: str, raw: Any) -> tuple[str, dict[str, Any]]:
+    if raw is None or raw == "":
+        return "", {}
+    if isinstance(raw, str):
+        return raw.strip(), {}
+    if isinstance(raw, dict):
+        stype = raw.get("type", "")
+        if not isinstance(stype, str) or not stype.strip():
+            raise ConfigError(f"{pkg}: strategy table must define a non-empty string 'type'")
+        opts = {str(k): v for k, v in raw.items() if k != "type"}
+        if "extra_dists" in opts:
+            raw_extra = opts["extra_dists"]
+            if not isinstance(raw_extra, list | tuple):
+                raise ConfigError(f"{pkg}: strategy.extra_dists must be a list of tables")
+            for idx, entry in enumerate(raw_extra):
+                if not isinstance(entry, dict) or not entry.get("url_template") or not entry.get("dist_template"):
+                    raise ConfigError(
+                        f"{pkg}: strategy.extra_dists[{idx}] must define url_template and dist_template"
+                    )
+        if "preserve_dists" in opts and not isinstance(opts["preserve_dists"], list | tuple):
+            raise ConfigError(f"{pkg}: strategy.preserve_dists must be a list of filename globs")
+        if "deps" in opts and not isinstance(opts["deps"], list | tuple):
+            raise ConfigError(f"{pkg}: strategy.deps must be a list of dependency names")
+        if "zig" in opts:
+            zcfg = opts["zig"]
+            if not isinstance(zcfg, dict):
+                raise ConfigError(f"{pkg}: strategy.zig must be a table")
+            if "deps" in zcfg and not isinstance(zcfg["deps"], list | tuple):
+                raise ConfigError(f"{pkg}: strategy.zig.deps must be a list of Zig dependency names")
+        return stype.strip(), opts
+    raise ConfigError(f"{pkg}: strategy must be a string or a table with 'type'")
+
+
 def load_config(repo_root: Path | None = None) -> AutomationConfig:
     root = find_repo_root(repo_root)
     raw = tomllib.loads((root / "metadata" / "autobump.toml").read_text(encoding="utf-8"))
@@ -272,10 +302,22 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
     for pkg, pdata in sorted(raw_packages.items()):
         if "/" not in pkg:
             raise ConfigError(f"Invalid package atom '{pkg}': expected 'category/name'")
+        if "smoke_test" in pdata:
+            raise ConfigError(
+                f"{pkg}: inline 'smoke_test' is disallowed in autobump.toml; "
+                f"create .github/smoke/{pkg}.sh (auto-discovered) or set smoke_test_script"
+            )
+        unknown_keys = sorted(set(pdata) - VALID_PACKAGE_KEYS)
+        if unknown_keys:
+            raise ConfigError(
+                f"{pkg}: unsupported top-level keys {unknown_keys} "
+                f"(strategy-specific options belong inside strategy = {{ type = ..., ... }})"
+            )
         detect = dict(pdata.get("detect", {"type": "none"}))
         dtype = detect.get("type", "none")
         if dtype not in VALID_DETECT_TYPES:
             raise ConfigError(f"{pkg}: invalid detect.type '{dtype}'")
+        strategy, strategy_opts = _parse_strategy_spec(pkg, pdata.get("strategy", ""))
         policy = pdata.get("policy", "pr-only")
         if policy not in VALID_POLICIES:
             raise ConfigError(f"{pkg}: invalid policy '{policy}'")
@@ -283,35 +325,6 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
         if cadence not in VALID_CADENCES:
             raise ConfigError(f"{pkg}: invalid cadence '{cadence}' (expected one of {sorted(VALID_CADENCES)})")
 
-        raw_extra_dists = pdata.get("extra_dists", ())
-        if not isinstance(raw_extra_dists, list | tuple):
-            raise ConfigError(f"{pkg}: extra_dists must be a list of tables")
-        extra_dists: list[ExtraDistSpec] = []
-        for idx, entry in enumerate(raw_extra_dists):
-            if not isinstance(entry, dict) or not entry.get("url_template") or not entry.get("dist_template"):
-                raise ConfigError(f"{pkg}: extra_dists[{idx}] must define url_template and dist_template")
-            extra_dists.append(
-                ExtraDistSpec(
-                    url_template=str(entry["url_template"]),
-                    dist_template=str(entry["dist_template"]),
-                )
-            )
-
-        raw_preserve_dists = pdata.get("preserve_dists", ())
-        if not isinstance(raw_preserve_dists, list | tuple):
-            raise ConfigError(f"{pkg}: preserve_dists must be a list of filename globs")
-        preserve_dists = tuple(str(p) for p in raw_preserve_dists)
-
-        raw_zig_deps = pdata.get("zig_deps", ())
-        if not isinstance(raw_zig_deps, list | tuple):
-            raise ConfigError(f"{pkg}: zig_deps must be a list of Zig dependency names")
-        zig_deps = tuple(str(d) for d in raw_zig_deps)
-
-        smoke_test = pdata.get("smoke_test", "").strip()
-        if "\n" in smoke_test:
-            raise ConfigError(
-                f"{pkg}: multi-line inline smoke_test is disallowed; use smoke_test_script instead"
-            )
         smoke_script = str(pdata.get("smoke_test_script", "")).strip()
         if smoke_script:
             if not (root / smoke_script).is_file():
@@ -325,22 +338,13 @@ def load_config(repo_root: Path | None = None) -> AutomationConfig:
         packages[pkg] = PackageSpec(
             pkg=pkg,
             detect=detect,
-            strategy=pdata.get("strategy", ""),
+            strategy=strategy,
+            strategy_opts=strategy_opts,
             cadence=cadence,
             retention=_parse_retention_spec(pkg, dict(pdata.get("retention", {}))),
             policy=policy,
             build=_parse_build_spec(pkg, dict(pdata.get("build", {}))),
-            smoke_test=smoke_test,
             smoke_test_script=smoke_script,
-            url_template=pdata.get("url_template", ""),
-            dist_template=pdata.get("dist_template", ""),
-            tag_ver_strip_prefix=str(pdata.get("tag_ver_strip_prefix", "")),
-            extra_dists=tuple(extra_dists),
-            preserve_dists=preserve_dists,
-            go_build_target=pdata.get("go_build_target", ""),
-            cargo_manifest_dir=pdata.get("cargo_manifest_dir", ""),
-            zig_manifest_dir=str(pdata.get("zig_manifest_dir", "")),
-            zig_deps=zig_deps,
             weekly_live_test=bool(pdata.get("weekly_live_test", False)),
         )
 
