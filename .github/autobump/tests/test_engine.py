@@ -17,7 +17,7 @@ if str(AUTOBUMP_DIR) not in sys.path:
     sys.path.insert(0, str(AUTOBUMP_DIR))
 
 from engine.builder import render_container_test_script, render_health_check_script, resolve_target_atom
-from engine.cli import detect_toml_changed_packages
+from engine.cli import detect_toml_changed_packages, resolve_package_arches
 from engine.common import get_local_version, version_key
 from engine.context import _select_latest_ebuild
 from engine.deps import (
@@ -541,6 +541,14 @@ build = { mode = "emerge-full" }
             detect_toml_changed_packages(old_toml, new_toml),
             {"app-i18n/rime-ice", "net-misc/newpkg"},
         )
+
+    def test_resolve_package_arches(self) -> None:
+        cfg = load_config(REPO_ROOT)
+        self.assertEqual(resolve_package_arches(cfg, "net-im/tencent-qq"), ["x64", "arm64"])
+        self.assertEqual(resolve_package_arches(cfg, "app-office/wps-office"), ["x64"])
+        self.assertEqual(resolve_package_arches(cfg, "net-misc/tsshd"), ["x64", "arm64"])
+        self.assertEqual(resolve_package_arches(cfg, "app-misc/bilihud", live=True), ["x64", "arm64"])
+        self.assertEqual(resolve_package_arches(cfg, "sci-ml/llama-cpp", live=True), ["x64"])
 
 
 if __name__ == "__main__":

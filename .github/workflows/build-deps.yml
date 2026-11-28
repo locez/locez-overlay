@@ -20,6 +20,8 @@ jobs:
        (github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'COLLABORATOR'))
+    # Security: intentionally stays on ephemeral ubuntu-latest because this workflow checks out
+    # untrusted contributor PR branches and runs go/cargo/emerge on PR-controlled code.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -131,6 +133,8 @@ jobs:
   verify:
     needs: resolve
     if: needs.resolve.outputs.count != '0'
+    # Security: intentionally stays on ephemeral ubuntu-latest because this workflow checks out
+    # untrusted contributor PR branches and runs go/cargo/emerge on PR-controlled code.
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -181,6 +185,8 @@ jobs:
   publish:
     needs: [resolve, verify]
     if: needs.resolve.outputs.count != '0'
+    # Security: intentionally stays on ephemeral ubuntu-latest because this workflow checks out
+    # untrusted contributor PR branches and runs go/cargo/emerge on PR-controlled code.
     runs-on: ubuntu-latest
     permissions:
       contents: write

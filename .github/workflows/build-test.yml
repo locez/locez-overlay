@@ -21,14 +21,15 @@ on:
         type: boolean
         default: false
       runner:
-        description: "Runner target for stage3 build-test"
+        description: "Runner target for stage3 build-test (auto = self-hosted X64/ARM64 matching package KEYWORDS)"
         type: choice
-        default: "ubuntu-latest"
+        default: "auto"
         options:
-          - "ubuntu-latest"
+          - "auto"
           - "self-hosted-x64"
           - "self-hosted-arm64"
           - "self-hosted-both"
+          - "ubuntu-latest"
   workflow_call:
     inputs:
       packages_json:
@@ -56,7 +57,9 @@ jobs:
         !startsWith(github.head_ref, 'python-compat/'))) &&
       (github.event_name != 'push' ||
        github.actor != 'github-actions[bot]')
-    runs-on: ubuntu-latest
+    # Trusted events (push/workflow_dispatch/workflow_call/same-repo PR) run on self-hosted;
+    # untrusted external fork PRs always stay on ephemeral GitHub-hosted runners.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJson('["self-hosted","Linux","X64"]') || 'ubuntu-latest' }}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_packages: ${{ steps.plan.outputs.has_packages }}
@@ -66,41 +69,82 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine packages to build-test
+      - name: Determine packages & safe runner matrix
         id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          RUNNER_CHOICE: ${{ inputs.runner }}
+          INPUT_PKG: ${{ inputs.package }}
+          INPUT_LIVE: ${{ inputs.live }}
+          INPUT_PACKAGES_JSON: ${{ inputs.packages_json }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            PKGS='${{ inputs.packages_json }}'
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            PKG="${{ inputs.package }}"
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_call" ]; then
+            PKGS="$INPUT_PACKAGES_JSON"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PKG="$INPUT_PKG"
             SLUG="${PKG//\//-}"
-            PKGS="[{\"pkg\":\"${PKG}\",\"slug\":\"${SLUG}\"}]"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            BEFORE="${{ github.event.before }}"
+            LIVE_FLAG=""
+            [ "$INPUT_LIVE" = "true" ] && LIVE_FLAG="--live"
+            ARCHES=$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py package-arches --pkg "$PKG" $LIVE_FLAG | jq -c '.arches')
+            PKGS=$(jq -cn --arg pkg "$PKG" --arg slug "$SLUG" --argjson arches "$ARCHES" '[{pkg: $pkg, slug: $slug, arches: $arches}]')
+          elif [ "$EVENT_NAME" = "push" ]; then
+            BEFORE="$PUSH_BEFORE"
             if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
               BEFORE="HEAD~1"
             fi
-            PKGS=$(python3 .github/autobump/main.py changed-packages --base "$BEFORE")
+            PKGS=$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py changed-packages --base "$BEFORE")
           else
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
-            PKGS=$(python3 .github/autobump/main.py changed-packages --base "origin/${{ github.base_ref }}")
+            git fetch origin "$PR_BASE_REF" --depth=1 || true
+            PKGS=$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py changed-packages --base "origin/${PR_BASE_REF}")
           fi
-          RUNNER_CHOICE="${{ inputs.runner }}"
-          case "$RUNNER_CHOICE" in
-            self-hosted-x64)
-              RUNNERS_JSON='[{"arch":"x64","runner":["self-hosted","Linux","X64"]}]'
-              ;;
-            self-hosted-arm64)
-              RUNNERS_JSON='[{"arch":"arm64","runner":["self-hosted","Linux","ARM64"]}]'
-              ;;
-            self-hosted-both)
-              RUNNERS_JSON='[{"arch":"x64","runner":["self-hosted","Linux","X64"]},{"arch":"arm64","runner":["self-hosted","Linux","ARM64"]}]'
-              ;;
-            *)
-              RUNNERS_JSON='[{"arch":"x64","runner":"ubuntu-latest"}]'
-              ;;
-          esac
-          COMPACT=$(echo "$PKGS" | jq -c --argjson runners "$RUNNERS_JSON" '[.[] as $p | $runners[] as $r | ($p + $r)]')
+
+          if [ "$IS_TRUSTED" != "true" ]; then
+            # Untrusted external fork PR: never schedule on self-hosted runners
+            COMPACT=$(echo "$PKGS" | jq -c '
+              [.[] as $p | ($p.arches // ["x64"])[] as $a |
+                {
+                  pkg: $p.pkg,
+                  slug: $p.slug,
+                  arch: $a,
+                  runner: (if $a == "arm64" then "ubuntu-24.04-arm" else "ubuntu-latest" end)
+                }
+              ]')
+          else
+            case "${RUNNER_CHOICE:-auto}" in
+              self-hosted-x64)
+                COMPACT=$(echo "$PKGS" | jq -c '[.[] | {pkg, slug, arch: "x64", runner: ["self-hosted","Linux","X64"]}]')
+                ;;
+              self-hosted-arm64)
+                COMPACT=$(echo "$PKGS" | jq -c '[.[] | {pkg, slug, arch: "arm64", runner: ["self-hosted","Linux","ARM64"]}]')
+                ;;
+              self-hosted-both)
+                COMPACT=$(echo "$PKGS" | jq -c '[.[] as $p | (
+                    {pkg: $p.pkg, slug: $p.slug, arch: "x64", runner: ["self-hosted","Linux","X64"]},
+                    {pkg: $p.pkg, slug: $p.slug, arch: "arm64", runner: ["self-hosted","Linux","ARM64"]}
+                  )]')
+                ;;
+              ubuntu-latest)
+                COMPACT=$(echo "$PKGS" | jq -c '[.[] | {pkg, slug, arch: "x64", runner: "ubuntu-latest"}]')
+                ;;
+              *)
+                # auto: schedule each package on self-hosted X64 and/or ARM64 matching its KEYWORDS
+                COMPACT=$(echo "$PKGS" | jq -c '
+                  [.[] as $p | ($p.arches // ["x64"])[] as $a |
+                    {
+                      pkg: $p.pkg,
+                      slug: $p.slug,
+                      arch: $a,
+                      runner: (if $a == "arm64" then ["self-hosted","Linux","ARM64"] else ["self-hosted","Linux","X64"] end)
+                    }
+                  ]')
+                ;;
+            esac
+          fi
+
           COUNT=$(echo "$COMPACT" | jq 'length')
           PKG_ARGS=$(echo "$PKGS" | jq -r '.[].pkg' | tr '\n' ' ')
           echo "matrix=$COMPACT" >> "$GITHUB_OUTPUT"

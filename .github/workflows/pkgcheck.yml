@@ -12,19 +12,35 @@ permissions:
 
 jobs:
   pkgcheck:
-    runs-on: ubuntu-latest
+    # Trusted events (push/schedule/same-repo PR) run on self-hosted;
+    # untrusted external fork PRs always stay on ephemeral GitHub-hosted runners.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJson('["self-hosted","Linux","X64"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Run autobump engine unit tests
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/autobump/tests -v
 
+      - name: Set up Node.js for worker tests
+        if: hashFiles('.github/worker/worker.test.mjs') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Run Cloudflare Worker unit tests
         if: hashFiles('.github/worker/worker.test.mjs') != ''
         run: node --test .github/worker/worker.test.mjs
 
       - name: Validate workflow & action YAML syntax
-        run: python3 -c "import glob, yaml; [yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml') + glob.glob('.github/actions/*/action.yml')]"
+        run: |
+          if python3 -c "import yaml" 2>/dev/null; then
+            PY=python3
+          else
+            python3 -m venv "${{ runner.temp }}/yaml-venv"
+            "${{ runner.temp }}/yaml-venv/bin/pip" install --quiet pyyaml
+            PY="${{ runner.temp }}/yaml-venv/bin/python"
+          fi
+          "$PY" -c "import glob, yaml; [yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml') + glob.glob('.github/actions/*/action.yml')]"
 
       - name: Run pkgcheck (offline on push/PR, --net on weekly schedule)
         uses: pkgcore/pkgcheck-action@v1

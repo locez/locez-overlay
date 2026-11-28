@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   detect:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
       issues: write
@@ -31,27 +31,31 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install nvchecker
-        run: pip install --upgrade nvchecker
+      - name: Install nvchecker in isolated venv
+        run: |
+          python3 -m venv "${{ runner.temp }}/nv-venv"
+          "${{ runner.temp }}/nv-venv/bin/pip" install --quiet --upgrade nvchecker
+          echo "${{ runner.temp }}/nv-venv/bin" >> "$GITHUB_PATH"
 
       - name: Detect outdated packages & ZFS unlock signals
         id: detect
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_PKG: ${{ inputs.package }}
         run: |
-          ARGS="detect --result-file /tmp/detect.json"
-          if [ -n "${{ inputs.package }}" ]; then
-            ARGS="$ARGS --only ${{ inputs.package }}"
+          ARGS=(detect --result-file "${{ runner.temp }}/detect.json")
+          if [ -n "$INPUT_PKG" ]; then
+            ARGS+=(--only "$INPUT_PKG")
           elif [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%u)" != "1" ]; then
             # On Tue-Sun scheduled runs, throttle versions that already have an open failure issue
             # and skip weekly-cadence packages; Mondays and manual runs always check everything.
-            ARGS="$ARGS --throttle-failed --skip-weekly"
+            ARGS+=(--throttle-failed --skip-weekly)
           fi
-          python3 .github/autobump/main.py $ARGS
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py "${ARGS[@]}"
 
-          UPDATES=$(jq -c '.updates' /tmp/detect.json)
-          COUNT=$(jq '.updates | length' /tmp/detect.json)
+          UPDATES=$(jq -c '.updates' "${{ runner.temp }}/detect.json")
+          COUNT=$(jq '.updates | length' "${{ runner.temp }}/detect.json")
           echo "matrix=$UPDATES" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
             echo "has_updates=true" >> "$GITHUB_OUTPUT"
@@ -66,13 +70,13 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          [ -f /tmp/detect.json ] || exit 0
+          [ -f "${{ runner.temp }}/detect.json" ] || exit 0
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          jq -c '.zfs_alerts[]?' /tmp/detect.json | while read -r item; do
+          jq -c '.zfs_alerts[]?' "${{ runner.temp }}/detect.json" | while read -r item; do
             PKG=$(echo "$item" | jq -r '.pkg')
             MSG=$(echo "$item" | jq -r '.message')
-            python3 .github/autobump/main.py notify \
+            PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
               --event zfs_unlocked \
               --pkg "$PKG" \
               --title "OpenZFS stable now supports newer kernel series" \
@@ -80,10 +84,10 @@ jobs:
               --run-url "$RUN_URL"
           done
 
-          ERR_COUNT=$(jq '.errors | length' /tmp/detect.json)
+          ERR_COUNT=$(jq '.errors | length' "${{ runner.temp }}/detect.json")
           if [ "$ERR_COUNT" -gt 0 ]; then
-            ERR_TEXT=$(jq -r '.errors[] | "- \(.pkg): \(.error)"' /tmp/detect.json)
-            python3 .github/autobump/main.py notify \
+            ERR_TEXT=$(jq -r '.errors[] | "- \(.pkg): \(.error)"' "${{ runner.temp }}/detect.json")
+            PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
               --event failed \
               --pkg "overlay/detect" \
               --title "version detection error" \
@@ -94,7 +98,7 @@ jobs:
   bump:
     needs: detect
     if: needs.detect.outputs.has_updates == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
     permissions:
       contents: write
@@ -139,17 +143,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISTFILES_TOKEN: ${{ secrets.DISTFILES_TOKEN }}
         run: |
-          mkdir -p /tmp/bump-distfiles
-          python3 .github/autobump/main.py bump \
+          mkdir -p "${{ runner.temp }}/bump-distfiles"
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py bump \
             --pkg "${{ matrix.pkg }}" \
             --target "${{ matrix.upstream_ver }}" \
             --upload-vendor \
-            --distdir /tmp/bump-distfiles \
-            --result-file /tmp/bump-result.json || true
+            --distdir "${{ runner.temp }}/bump-distfiles" \
+            --result-file "${{ runner.temp }}/bump-result.json" || true
 
-          STATUS=$(jq -r '.status // "failed"' /tmp/bump-result.json)
-          TARGET=$(jq -r '.target_ver // "${{ matrix.upstream_ver }}"' /tmp/bump-result.json)
-          POLICY=$(jq -r '.policy // "pr-only"' /tmp/bump-result.json)
+          STATUS=$(jq -r '.status // "failed"' "${{ runner.temp }}/bump-result.json")
+          TARGET=$(jq -r '.target_ver // "${{ matrix.upstream_ver }}"' "${{ runner.temp }}/bump-result.json")
+          POLICY=$(jq -r '.policy // "pr-only"' "${{ runner.temp }}/bump-result.json")
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "target_ver=$TARGET" >> "$GITHUB_OUTPUT"
           echo "policy=$POLICY" >> "$GITHUB_OUTPUT"
@@ -169,8 +173,8 @@ jobs:
         uses: ./.github/actions/gentoo-build-test
         with:
           package: ${{ matrix.pkg }}
-          log-dir: /tmp/build-logs
-          distdir: /tmp/bump-distfiles
+          log-dir: ${{ runner.temp }}/build-logs
+          distdir: ${{ runner.temp }}/bump-distfiles
 
       - name: Create PR and apply merge policy
         id: pr
@@ -263,7 +267,7 @@ jobs:
 
           if [ "${{ steps.bump.outputs.status }}" = "failed" ]; then
             STAGE="bump"
-            SUMMARY=$(jq -r '.message // "Unknown bump error"' /tmp/bump-result.json)
+            SUMMARY=$(jq -r '.message // "Unknown bump error"' "${{ runner.temp }}/bump-result.json")
           elif [ "${{ steps.pkgcheck.outcome }}" != "success" ]; then
             STAGE="pkgcheck"
             SUMMARY="pkgcheck scan --exit error failed for ${PKG} ${NEW_VER}"
@@ -276,10 +280,10 @@ jobs:
           fi
 
           LOG_ARGS=()
-          [ -f /tmp/build-logs/console.log ] && LOG_ARGS+=(--log "console=/tmp/build-logs/console.log")
-          [ -f /tmp/build-logs/build.log ] && LOG_ARGS+=(--log "portage_build=/tmp/build-logs/build.log")
+          [ -f "${{ runner.temp }}/build-logs/console.log" ] && LOG_ARGS+=(--log "console=${{ runner.temp }}/build-logs/console.log")
+          [ -f "${{ runner.temp }}/build-logs/build.log" ] && LOG_ARGS+=(--log "portage_build=${{ runner.temp }}/build-logs/build.log")
 
-          python3 .github/autobump/main.py collect-context \
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py collect-context \
             --pkg "$PKG" \
             --stage "$STAGE" \
             --local-ver "$LOCAL_VER" \
@@ -287,15 +291,15 @@ jobs:
             --summary "$SUMMARY" \
             --run-url "$RUN_URL" \
             "${LOG_ARGS[@]}" \
-            --out /tmp/failure-context.json
+            --out "${{ runner.temp }}/failure-context.json"
 
-          python3 .github/autobump/main.py notify \
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
             --event failed \
             --pkg "$PKG" \
             --title "${LOCAL_VER} -> ${NEW_VER} (${STAGE} failed)" \
             --detail "$SUMMARY" \
-            --log-file /tmp/build-logs/build.log \
-            --log-file /tmp/build-logs/console.log \
+            --log-file "${{ runner.temp }}/build-logs/build.log" \
+            --log-file "${{ runner.temp }}/build-logs/console.log" \
             --run-url "$RUN_URL"
 
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
@@ -306,8 +310,8 @@ jobs:
         with:
           name: failure-context-${{ matrix.slug }}
           path: |
-            /tmp/failure-context.json
-            /tmp/build-logs
+            ${{ runner.temp }}/failure-context.json
+            ${{ runner.temp }}/build-logs
           if-no-files-found: ignore
           retention-days: 14
 
@@ -324,10 +328,10 @@ jobs:
             echo "AI_REPAIR_CMD secret not set; skipping automatic AI repair."
             exit 0
           fi
-          python3 .github/autobump/main.py ai-repair \
-            --context /tmp/failure-context.json \
-            --result-file /tmp/ai-result.json || true
-          STATUS=$(jq -r '.status // "failed"' /tmp/ai-result.json)
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py ai-repair \
+            --context "${{ runner.temp }}/failure-context.json" \
+            --result-file "${{ runner.temp }}/ai-result.json" || true
+          STATUS=$(jq -r '.status // "failed"' "${{ runner.temp }}/ai-result.json")
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
 
       - name: Verify AI patch with pkgcheck
@@ -345,8 +349,8 @@ jobs:
         uses: ./.github/actions/gentoo-build-test
         with:
           package: ${{ matrix.pkg }}
-          log-dir: /tmp/ai-build-logs
-          distdir: /tmp/bump-distfiles
+          log-dir: ${{ runner.temp }}/ai-build-logs
+          distdir: ${{ runner.temp }}/bump-distfiles
 
       - name: Open AI Draft PR & notify
         if: steps.ai_run.outputs.status == 'patched' && steps.ai_pkgcheck.outcome == 'success' && steps.ai_build.outcome == 'success'

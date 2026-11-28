@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import tomllib
 from dataclasses import asdict
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .builder import render_container_test_script, render_health_check_script, resolve_target_atom
-from .common import get_local_version
+from .common import get_local_version, list_release_ebuilds
 from .context import collect_failure_context
 from .deps import build_deps_for_package, resolve_packages_deps
 from .detect import detect_updates
@@ -203,14 +204,58 @@ def _git_changed_packages(repo_root: Path, base: str, *, only_configured: set[st
     return sorted(found)
 
 
+def resolve_package_arches(cfg: AutomationConfig, pkg: str, *, live: bool = False) -> list[str]:
+    """Determine supported CI architectures ('x64', 'arm64') for a package from build.arches or KEYWORDS."""
+    spec = cfg.packages.get(pkg)
+    if spec and spec.build.arches:
+        return list(spec.build.arches)
+    pn = pkg.split("/", 1)[1]
+    ebuilds = list_release_ebuilds(cfg.repo_root, pkg)
+    eb_path: Path | None = None
+    if not live and ebuilds:
+        eb_path = ebuilds[-1][1]
+    elif (cfg.repo_root / pkg / f"{pn}-9999.ebuild").is_file():
+        eb_path = cfg.repo_root / pkg / f"{pn}-9999.ebuild"
+    elif ebuilds:
+        eb_path = ebuilds[-1][1]
+    if eb_path is None:
+        return ["x64"]
+
+    text = eb_path.read_text(encoding="utf-8")
+    kw_matches = re.findall(r'^\s*KEYWORDS="([^"]*)"', text, flags=re.M)
+    if not kw_matches:
+        # Live-only 9999 ebuilds omit KEYWORDS by Gentoo convention; test both x64 and arm64 unless overridden.
+        return ["x64", "arm64"]
+    tokens: set[str] = set()
+    for m in kw_matches:
+        tokens.update(m.split())
+    arches: list[str] = []
+    if "amd64" in tokens or "~amd64" in tokens:
+        arches.append("x64")
+    if "arm64" in tokens or "~arm64" in tokens:
+        arches.append("arm64")
+    return arches or ["x64"]
+
+
 def _cmd_changed_packages(cfg: AutomationConfig, args: argparse.Namespace) -> int:
     pkgs = _git_changed_packages(cfg.repo_root, args.base, only_configured=set(cfg.packages))
-    _emit([{"pkg": p, "slug": cfg.packages[p].slug} for p in pkgs])
+    _emit([{"pkg": p, "slug": cfg.packages[p].slug, "arches": resolve_package_arches(cfg, p)} for p in pkgs])
     return 0
 
 
 def _cmd_live_packages(cfg: AutomationConfig, _args: argparse.Namespace) -> int:
-    _emit([{"pkg": p, "slug": s.slug} for p, s in sorted(cfg.packages.items()) if s.weekly_live_test])
+    _emit(
+        [
+            {"pkg": p, "slug": s.slug, "arches": resolve_package_arches(cfg, p, live=True)}
+            for p, s in sorted(cfg.packages.items())
+            if s.weekly_live_test
+        ]
+    )
+    return 0
+
+
+def _cmd_package_arches(cfg: AutomationConfig, args: argparse.Namespace) -> int:
+    _emit({"pkg": args.pkg, "arches": resolve_package_arches(cfg, args.pkg, live=args.live)})
     return 0
 
 
@@ -340,6 +385,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("live-packages", help="List packages enabled for weekly live build tests")
     p.set_defaults(func=_cmd_live_packages)
+
+    p = sub.add_parser("package-arches", help="Resolve supported CI architectures for a package")
+    p.add_argument("--pkg", required=True)
+    p.add_argument("--live", action="store_true")
+    p.set_defaults(func=_cmd_package_arches)
 
     p = sub.add_parser("collect-context", help="Collect structured FailureContext JSON")
     p.add_argument("--pkg", required=True)

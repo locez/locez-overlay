@@ -27,7 +27,7 @@ jobs:
        (github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'COLLABORATOR'))
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
     permissions:
       contents: write
@@ -71,7 +71,7 @@ jobs:
             --target-ver "${TARGET:-latest}" \
             --summary "$SUMMARY" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            --out /tmp/failure-context.json
+            --out "${{ runner.temp }}/failure-context.json"
 
       - name: Run pluggable AI repair runner
         id: repair
@@ -80,9 +80,9 @@ jobs:
           AI_REPAIR_API_KEY: ${{ secrets.AI_REPAIR_API_KEY }}
         run: |
           python3 .github/autobump/main.py ai-repair \
-            --context /tmp/failure-context.json \
-            --result-file /tmp/ai-result.json
-          STATUS=$(jq -r '.status' /tmp/ai-result.json)
+            --context "${{ runner.temp }}/failure-context.json" \
+            --result-file "${{ runner.temp }}/ai-result.json"
+          STATUS=$(jq -r '.status' "${{ runner.temp }}/ai-result.json")
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
 
       - name: Verify AI patch with pkgcheck
@@ -96,7 +96,7 @@ jobs:
         uses: ./.github/actions/gentoo-build-test
         with:
           package: ${{ steps.prep.outputs.pkg }}
-          log-dir: /tmp/ai-build-logs
+          log-dir: ${{ runner.temp }}/ai-build-logs
 
       - name: Open Draft PR & notify
         if: steps.repair.outputs.status == 'patched'

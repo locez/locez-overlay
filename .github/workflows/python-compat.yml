@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   detect:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
       has_updates: ${{ steps.detect.outputs.has_updates }}
@@ -26,15 +26,17 @@ jobs:
 
       - name: Detect packages needing PYTHON_COMPAT bump or EOL cleanup
         id: detect
+        env:
+          INPUT_PKG: ${{ inputs.package }}
         run: |
-          ARGS="python-compat-detect --result-file /tmp/py-detect.json"
-          if [ -n "${{ inputs.package }}" ]; then
-            ARGS="$ARGS --only ${{ inputs.package }}"
+          ARGS=(python-compat-detect --result-file "${{ runner.temp }}/py-detect.json")
+          if [ -n "$INPUT_PKG" ]; then
+            ARGS+=(--only "$INPUT_PKG")
           fi
-          python3 .github/autobump/main.py $ARGS
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py "${ARGS[@]}"
 
-          UPDATES=$(jq -c '.updates' /tmp/py-detect.json)
-          COUNT=$(jq '.updates | length' /tmp/py-detect.json)
+          UPDATES=$(jq -c '.updates' "${{ runner.temp }}/py-detect.json")
+          COUNT=$(jq '.updates | length' "${{ runner.temp }}/py-detect.json")
           echo "matrix=$UPDATES" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
             echo "has_updates=true" >> "$GITHUB_OUTPUT"
@@ -45,7 +47,7 @@ jobs:
   sync:
     needs: detect
     if: needs.detect.outputs.has_updates == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
     permissions:
       contents: write
@@ -64,10 +66,10 @@ jobs:
       - name: Update PYTHON_COMPAT in ebuilds
         id: sync
         run: |
-          python3 .github/autobump/main.py python-compat-sync \
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py python-compat-sync \
             --pkg "${{ matrix.pkg }}" \
-            --result-file /tmp/py-sync.json
-          STATUS=$(jq -r '.status' /tmp/py-sync.json)
+            --result-file "${{ runner.temp }}/py-sync.json"
+          STATUS=$(jq -r '.status' "${{ runner.temp }}/py-sync.json")
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
 
       - name: Run pkgcheck gate
@@ -86,7 +88,7 @@ jobs:
         with:
           package: ${{ matrix.pkg }}
           python-target: ${{ matrix.max_target }}
-          log-dir: /tmp/py-build-logs
+          log-dir: ${{ runner.temp }}/py-build-logs
 
       - name: Create PR and auto-merge
         id: pr
@@ -179,10 +181,10 @@ jobs:
           fi
 
           LOG_ARGS=()
-          [ -f /tmp/py-build-logs/console.log ] && LOG_ARGS+=(--log "console=/tmp/py-build-logs/console.log")
-          [ -f /tmp/py-build-logs/build.log ] && LOG_ARGS+=(--log "portage_build=/tmp/py-build-logs/build.log")
+          [ -f "${{ runner.temp }}/py-build-logs/console.log" ] && LOG_ARGS+=(--log "console=${{ runner.temp }}/py-build-logs/console.log")
+          [ -f "${{ runner.temp }}/py-build-logs/build.log" ] && LOG_ARGS+=(--log "portage_build=${{ runner.temp }}/py-build-logs/build.log")
 
-          python3 .github/autobump/main.py collect-context \
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py collect-context \
             --pkg "$PKG" \
             --stage "$STAGE" \
             --local-ver "${{ matrix.old_compat }}" \
@@ -190,15 +192,15 @@ jobs:
             --summary "$SUMMARY" \
             --run-url "$RUN_URL" \
             "${LOG_ARGS[@]}" \
-            --out /tmp/failure-context.json
+            --out "${{ runner.temp }}/failure-context.json"
 
-          python3 .github/autobump/main.py notify \
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
             --event failed \
             --pkg "$PKG" \
             --title "PYTHON_COMPAT sync ${MAX_T} (${STAGE} failed)" \
             --detail "$SUMMARY" \
-            --log-file /tmp/py-build-logs/build.log \
-            --log-file /tmp/py-build-logs/console.log \
+            --log-file "${{ runner.temp }}/py-build-logs/build.log" \
+            --log-file "${{ runner.temp }}/py-build-logs/console.log" \
             --run-url "$RUN_URL"
 
       - name: Attempt pluggable AI repair (Draft PR only)
@@ -213,10 +215,10 @@ jobs:
             echo "status=disabled" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python3 .github/autobump/main.py ai-repair \
-            --context /tmp/failure-context.json \
-            --result-file /tmp/ai-result.json || true
-          echo "status=$(jq -r '.status // "failed"' /tmp/ai-result.json)" >> "$GITHUB_OUTPUT"
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py ai-repair \
+            --context "${{ runner.temp }}/failure-context.json" \
+            --result-file "${{ runner.temp }}/ai-result.json" || true
+          echo "status=$(jq -r '.status // "failed"' "${{ runner.temp }}/ai-result.json")" >> "$GITHUB_OUTPUT"
 
       - name: Verify AI patch & open Draft PR
         if: steps.ai_run.outputs.status == 'patched'
@@ -230,7 +232,7 @@ jobs:
         with:
           package: ${{ matrix.pkg }}
           python-target: ${{ matrix.max_target }}
-          log-dir: /tmp/ai-py-build-logs
+          log-dir: ${{ runner.temp }}/ai-py-build-logs
 
       - name: Push AI Draft PR & notify
         if: steps.ai_run.outputs.status == 'patched'

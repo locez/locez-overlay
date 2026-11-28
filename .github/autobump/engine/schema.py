@@ -15,6 +15,7 @@ RetentionGuard = Literal["none", "keep-last-zfs-compatible"]
 DetectType = Literal["none", "nvchecker", "wechat-head"]
 
 VALID_BUILD_MODES: frozenset[str] = frozenset({"emerge-full", "emerge-bin", "kernel-sources", "dep-resolve"})
+VALID_ARCHES: frozenset[str] = frozenset({"x64", "arm64"})
 VALID_POLICIES: frozenset[str] = frozenset({"auto-merge", "pr-only", "issue-only"})
 VALID_CADENCES: frozenset[str] = frozenset({"daily", "weekly"})
 VALID_RETENTION_TYPES: frozenset[str] = frozenset({"replace", "keep-latest"})
@@ -79,6 +80,7 @@ class BuildSpec:
     use_sets: tuple[tuple[str, ...], ...] = ()
     extra_pkgs: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
+    arches: tuple[str, ...] = ()
     test: bool = False
     check_kconfig: bool = False
 
@@ -174,12 +176,17 @@ def _parse_build_spec(pkg: str, raw: dict[str, Any]) -> BuildSpec:
     if not isinstance(raw_env, dict):
         raise ConfigError(f"{pkg}: build.env must be a table of KEY = VALUE strings")
     env = {str(k): str(v) for k, v in raw_env.items()}
+    arches = tuple(str(a) for a in raw.get("arches", ()))
+    bad_arches = set(arches) - VALID_ARCHES
+    if bad_arches:
+        raise ConfigError(f"{pkg}: invalid build.arches {sorted(bad_arches)} (expected subset of {sorted(VALID_ARCHES)})")
     return BuildSpec(
         mode=mode,
         use=use,
         use_sets=use_sets,
         extra_pkgs=extra_pkgs,
         env=env,
+        arches=arches,
         test=bool(raw.get("test", False)),
         check_kconfig=bool(raw.get("check_kconfig", False)),
     )

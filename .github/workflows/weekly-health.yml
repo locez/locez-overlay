@@ -16,7 +16,7 @@ permissions:
 jobs:
   overlay-health:
     name: Full-overlay dep-resolve & signer URL health
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -70,7 +70,9 @@ jobs:
           set -e
 
           if [ "$(id -u)" -ne 0 ]; then
-            sudo -n chown -R "$(id -u):$(id -g)" "$TREE_DIR" "$LOG_DIR" 2>/dev/null || true
+            sudo -n chown -R "$(id -u):$(id -g)" "$TREE_DIR" "$LOG_DIR" 2>/dev/null \
+              || docker run --rm -v "${TREE_DIR}:/t" -v "${LOG_DIR}:/l" "$IMAGE" chown -R "$(id -u):$(id -g)" /t /l 2>/dev/null \
+              || true
           fi
           if [ "${{ steps.restore_tree.outputs.cache-hit }}" != "true" ] && [ -d "${TREE_DIR}/metadata" ]; then
             echo "save_tree=true" >> "$GITHUB_OUTPUT"
@@ -114,7 +116,7 @@ jobs:
 
   plan-live:
     if: github.event_name != 'workflow_dispatch' || inputs.include_live == true
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       matrix: ${{ steps.live.outputs.matrix }}
       has_live: ${{ steps.live.outputs.has_live }}
@@ -122,12 +124,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: List 9999 live packages from metadata/autobump.toml
+      - name: List 9999 live packages & target arches from metadata/autobump.toml
         id: live
         run: |
-          PKGS=$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py live-packages | jq -c '.')
-          COUNT=$(echo "$PKGS" | jq 'length')
-          echo "matrix=$PKGS" >> "$GITHUB_OUTPUT"
+          PKGS=$(PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py live-packages)
+          MATRIX=$(echo "$PKGS" | jq -c '
+            [.[] as $p | ($p.arches // ["x64"])[] as $a |
+              {
+                pkg: $p.pkg,
+                slug: $p.slug,
+                arch: $a,
+                runner: (if $a == "arm64" then ["self-hosted","Linux","ARM64"] else ["self-hosted","Linux","X64"] end)
+              }
+            ]')
+          COUNT=$(echo "$MATRIX" | jq 'length')
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           if [ "$COUNT" -gt 0 ]; then
             echo "has_live=true" >> "$GITHUB_OUTPUT"
           else
@@ -135,9 +146,10 @@ jobs:
           fi
 
   live-build-test:
+    name: live-build-test (${{ matrix.pkg }}, ${{ matrix.arch }})
     needs: plan-live
     if: needs.plan-live.outputs.has_live == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -163,7 +175,7 @@ jobs:
         if: steps.test.outcome != 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: live-logs-${{ matrix.slug }}
+          name: live-logs-${{ matrix.slug }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/live-logs
           if-no-files-found: ignore
           retention-days: 7
@@ -179,7 +191,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 .github/autobump/main.py notify \
             --event health_alert \
             --pkg "${{ matrix.pkg }}" \
-            --title "9999 live ebuild build/test failed" \
+            --title "9999 live ebuild build/test failed (${{ matrix.arch }})" \
             --detail "$TAIL" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           exit 1
