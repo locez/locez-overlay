@@ -231,13 +231,31 @@ def render_health_check_script(
             'eselect profile set "${PROFILE}"',
         ]
 
+    binhost_lines: list[str] = []
+    emerge_binpkg_opts = ""
+    if cfg.build.use_binhost:
+        binhost_lines = [
+            f"BINHOST_URI={shlex.quote(cfg.build.binhost_uri)}",
+            'if [[ "${GENTOO_ARCH}" != "amd64" ]]; then',
+            '  BINHOST_URI="${BINHOST_URI/\\/amd64\\/binpackages\\///${GENTOO_ARCH}/binpackages/}"',
+            '  BINHOST_URI="${BINHOST_URI/\\/x86-64\\///${BINHOST_SUBARCH}/}"',
+            "fi",
+            "mkdir -p /etc/portage/binrepos.conf",
+            "cat > /etc/portage/binrepos.conf/gentoobinhost.conf <<BINHOST",
+            "[gentoobinhost]",
+            "priority = 1",
+            "sync-uri = ${BINHOST_URI}",
+            "BINHOST",
+        ]
+        emerge_binpkg_opts = "--usepkg --getbinpkg --binpkg-changed-deps=y"
+
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
         'case "$(uname -m)" in',
-        '  x86_64)  GENTOO_ARCH="amd64" ;;',
-        '  aarch64) GENTOO_ARCH="arm64" ;;',
-        '  *)       GENTOO_ARCH="$(uname -m)" ;;',
+        '  x86_64)  GENTOO_ARCH="amd64"; BINHOST_SUBARCH="x86-64" ;;',
+        '  aarch64) GENTOO_ARCH="arm64"; BINHOST_SUBARCH="arm64" ;;',
+        '  *)       GENTOO_ARCH="$(uname -m)"; BINHOST_SUBARCH="$(uname -m)" ;;',
         "esac",
         f"mkdir -p {shlex.quote(log_dir)} /etc/portage/repos.conf /etc/portage/package.accept_keywords /etc/portage/package.use",
         "if [[ ! -d /var/db/repos/gentoo/metadata ]]; then",
@@ -250,9 +268,11 @@ def render_health_check_script(
         "priority = 100",
         "auto-sync = no",
         "REPO",
+        *binhost_lines,
         "cat >> /etc/portage/make.conf <<'MAKECONF'",
         'ACCEPT_LICENSE="*"',
         'CONFIG_PROTECT="-*"',
+        'FEATURES="${FEATURES} -binpkg-request-signature"',
         "MAKECONF",
         f'echo "*/*::{repo_name} ~${{GENTOO_ARCH}}" > /etc/portage/package.accept_keywords/overlay',
         "FAILURES=()",
@@ -267,15 +287,19 @@ def render_health_check_script(
         use_flags = list(spec.build.effective_use_sets()[0])
         if spec.build.mode == "emerge-full" and spec.build.test and "test" not in use_flags:
             use_flags.append("test")
-        lines.append("rm -f /etc/portage/package.use/10-target /etc/portage/package.use/zz-autounmask")
+        lines.append(
+            "rm -f /etc/portage/package.use/10-target /etc/portage/package.use/zz-autounmask /etc/portage/package.accept_keywords/zz-autounmask"
+        )
         if use_flags:
             lines.append(
                 f"echo {shlex.quote(pkg + ' ' + ' '.join(use_flags))} > /etc/portage/package.use/10-target"
             )
         safe_slug = shlex.quote(f"{log_dir}/dep-{spec.slug}.log")
+        pkg_opts = f"{emerge_binpkg_opts} --usepkg-exclude={shlex.quote(pkg)}".strip()
         lines += [
             f"echo '--- [dep-resolve] {atom} ---'",
-            f"if emerge --pretend --verbose --autounmask=y --autounmask-use=y {shlex.quote(atom)} >{safe_slug} 2>&1; then",
+            f"emerge {pkg_opts} --autounmask=y --autounmask-use=y --autounmask-write=y --autounmask-only=y {shlex.quote(atom)} >/dev/null 2>&1 || true",
+            f"if emerge --pretend --verbose {pkg_opts} {shlex.quote(atom)} >{safe_slug} 2>&1; then",
             f"  echo '  OK: {atom}'",
             "else",
             f"  echo '  FAILED: {atom}'",

@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 4 * * 1" # Every Monday at 04:00 UTC
   workflow_dispatch:
+    inputs:
+      include_live:
+        description: "Also run 9999 live ebuild builds"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -108,6 +113,7 @@ jobs:
           exit 1
 
   plan-live:
+    if: github.event_name != 'workflow_dispatch' || inputs.include_live == true
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.live.outputs.matrix }}
