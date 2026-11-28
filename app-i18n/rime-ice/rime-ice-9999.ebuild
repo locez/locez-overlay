@@ -2,7 +2,12 @@
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=8
-LUA_COMPAT=( lua5-{1,3,4} luajit )
+
+# rime-ice Lua scripts rely on Lua 5.2+ (`goto`/labels in lua/search.lua) and
+# Lua 5.3+ standard `utf8` library (utf8.len/offset/char across filters).
+# Gentoo's default lua5-1 (and luajit without full Lua 5.3+ stdlib) fail or
+# crash at runtime; keep pinned to lua5-4 so librime-lua matches.
+LUA_COMPAT=( lua5-4 )
 inherit git-r3 lua-single
 
 DESCRIPTION="Rime ICE - A long-term maintained simplified Chinese Rime schema"
