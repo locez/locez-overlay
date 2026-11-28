@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import urllib.request
 
 from ..common import (
     BumpError,
     BumpSkip,
+    USER_AGENT,
     dist_manifest_line,
     download_file,
     extract_deb_control_field,
@@ -26,7 +28,29 @@ from .base import BumpContext
 WECHAT_X64_URL = "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb"
 WECHAT_ARM64_URL = "https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb"
 QQ_CONFIG_URL = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js"
-QQ_PROXY_PREFIX = "https://dlqq.akkariin.moe/"
+QQ_SIGN_API_URL = "https://im.qq.com/http2rpc/gotrpc/noauth/trpc.qqntv2.urlsign.UrlSign/GetSign"
+
+
+def sign_tencent_qq_url(url: str, *, timeout: int = 30) -> str:
+    """Sign a qqdl.gtimg.cn URL directly via Tencent's official UrlSign RPC."""
+    req = urllib.request.Request(
+        QQ_SIGN_API_URL,
+        data=json.dumps({"url": url}).encode("utf-8"),
+        headers={
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/json",
+            "X-Oidb": json.dumps({"uint32_command": "0x9b8e", "uint32_service_type": 1}),
+            "Origin": "https://im.qq.com",
+            "Referer": "https://im.qq.com/",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    signed = (payload.get("data") or {}).get("url")
+    if not isinstance(signed, str) or not signed.startswith("https://qqdl.gtimg.cn/"):
+        raise BumpError(f"Unexpected Tencent QQ UrlSign response for {url}: {payload!r}")
+    return signed
 
 
 def bump_tencent_qq(ctx: BumpContext) -> str:
@@ -52,8 +76,8 @@ def bump_tencent_qq(ctx: BumpContext) -> str:
 
     amd64_dist = f"{ctx.spec.pn}-{new_ver}_amd64.deb"
     arm64_dist = f"{ctx.spec.pn}-{new_ver}_arm64.deb"
-    amd64_dl = download_file(QQ_PROXY_PREFIX + amd64_url, ctx.work / amd64_dist)
-    arm64_dl = download_file(QQ_PROXY_PREFIX + arm64_url, ctx.work / arm64_dist)
+    amd64_dl = download_file(sign_tencent_qq_url(amd64_url), ctx.work / amd64_dist)
+    arm64_dl = download_file(sign_tencent_qq_url(arm64_url), ctx.work / arm64_dist)
 
     deb_ver = extract_deb_control_field(amd64_dl, "Version", ctx.work)
     build_m = re.search(r"-([0-9]+)$", deb_ver)

@@ -5,17 +5,14 @@ EAPI=8
 
 inherit desktop unpacker xdg
 
-qqmusic_src_uri() {
-	printf "https://qqmusic-sign.qqmusic-sign-worker.workers.dev/"
-	printf "https://c.y.qq.com/cgi-bin/file_redirect.fcg?bid=dldir&file=ecosfile_plink%%2Fmusic_clntupate%%2Flinux%%2Fother%%2Fqqmusic_${PV}_amd64.deb"
-	printf " -> ${P}_amd64.deb"
-}
+# Official static download signature from https://y.qq.com/download/download.html
+MY_SIGN="1-d1ca4d5c5a8369b26af88e881ba3ac544066a899dcaea29778b35c9f648e6fee-68cb7c1c"
 
 DESCRIPTION="Tencent QQ Music, converted from .deb package"
 HOMEPAGE="https://y.qq.com/"
 # dldir.y.qq.com may only serve this file in mainland China; elsewhere it
 # returns 403, so download the file manually and place it in DISTDIR.
-SRC_URI="$(qqmusic_src_uri)"
+SRC_URI="https://c.y.qq.com/cgi-bin/file_redirect.fcg?bid=dldir&file=ecosfile_plink%2Fmusic_clntupate%2Flinux%2Fother%2Fqqmusic_${PV}_amd64.deb&sign=${MY_SIGN} -> ${P}_amd64.deb"
 
 S="${WORKDIR}"
 

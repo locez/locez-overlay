@@ -9,7 +9,7 @@ DESCRIPTION="UDP-based SSH server with roaming support"
 HOMEPAGE="https://github.com/trzsz/tsshd https://trzsz.github.io/tsshd"
 SRC_URI="
 	https://github.com/trzsz/${PN}/archive/refs/tags/v${PV}.tar.gz -> ${P}.tar.gz
-	https://github.com/gentoo-zh-drafts/tsshd/releases/download/v${PV}/${P}-vendor.tar.xz
+	https://github.com/locez/locez-overlay-distfiles/releases/download/${CATEGORY}-${PN}-${PV}/${P}-deps.tar.xz
 "
 
 LICENSE="Apache-2.0 BSD BSD-2 ISC MIT"

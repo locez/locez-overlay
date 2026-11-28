@@ -36,9 +36,11 @@ from engine.detect import filter_throttled_updates
 from engine.notify import extract_log_excerpt, format_telegram_event
 from engine.plugins import STRATEGIES
 from engine.plugins.base import BumpContext
+from engine.plugins.cn_apps import sign_wps_url
 from engine.plugins.kernel import _extract_filesdir_patches
 from engine.plugins.rust import parse_crates_from_ebuild
 from engine.plugins.simple import bump_github_release
+from engine.plugins.tencent import sign_tencent_qq_url
 from engine.python_compat import (
     compute_target_compat,
     format_python_compat,
@@ -462,6 +464,35 @@ SRC_URI="
 
         crates = parse_crates_from_ebuild('CRATES="\n\tserde@1.0.229\n\ttokio@1.45.0\n"\n')
         self.assertEqual(crates, [("serde", "1.0.229"), ("tokio", "1.45.0")])
+
+    def test_direct_upstream_signing_helpers(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        wps_signed = sign_wps_url(
+            "https://wps-linux-personal.wpscdn.cn/wps/download/ep/Linux2023/29183/"
+            "wps-office_12.1.2.29183.AK.preread.sw.Personal_806791_amd64.deb",
+            now=1795854806,
+        )
+        self.assertEqual(
+            wps_signed,
+            "https://wps-linux-personal.wpscdn.cn/wps/download/ep/Linux2023/29183/"
+            "wps-office_12.1.2.29183.AK.preread.sw.Personal_806791_amd64.deb"
+            "?t=1795854806&k=75aa665471fa885e34931750f1fcb839",
+        )
+
+        fake_resp = MagicMock()
+        fake_resp.__enter__.return_value = fake_resp
+        fake_resp.read.return_value = json.dumps(
+            {
+                "retcode": 0,
+                "data": {
+                    "url": "https://qqdl.gtimg.cn/qqfile/QQNTV2/test.deb?sign=abc123&t=1795855379",
+                },
+            }
+        ).encode("utf-8")
+        with patch("urllib.request.urlopen", return_value=fake_resp):
+            qq_signed = sign_tencent_qq_url("https://qqdl.gtimg.cn/qqfile/QQNTV2/test.deb")
+        self.assertEqual(qq_signed, "https://qqdl.gtimg.cn/qqfile/QQNTV2/test.deb?sign=abc123&t=1795855379")
 
 
 if __name__ == "__main__":

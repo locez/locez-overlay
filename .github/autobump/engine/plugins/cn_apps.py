@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
+import time
+import urllib.parse
 
 from ..common import (
     BumpError,
@@ -22,7 +25,15 @@ FEISHU_API_URL = "https://www.feishu.cn/api/downloads"
 DINGTALK_AMD64_REDIRECT = "https://www.dingtalk.com/win/d/qd=linux_amd64"
 DINGTALK_ARM64_REDIRECT = "https://www.dingtalk.com/win/d/qd=linux_arm64"
 WPS_LINUX_PAGE = "https://linux.wps.cn/"
-WPS_PROXY_PREFIX = "https://wps302.wcbing.top/"
+WPS_SECURITY_KEY = "7f8faaaa468174dc1c9cd62e5f218a5b"
+
+
+def sign_wps_url(url: str, *, now: int | None = None) -> str:
+    """Sign a wps-linux-personal.wpscdn.cn download URL locally with timestamped MD5."""
+    parsed = urllib.parse.urlsplit(url)
+    ts = str(int(time.time()) if now is None else int(now))
+    token = hashlib.md5(f"{WPS_SECURITY_KEY}{parsed.path}{ts}".encode("utf-8")).hexdigest()
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}?t={ts}&k={token}"
 
 
 def bump_feishu(ctx: BumpContext) -> str:
@@ -148,7 +159,7 @@ def bump_wps_office(ctx: BumpContext) -> str:
         f"wps-office_{new_ver}.AK.preread.sw.Personal_{build_id}_amd64.deb"
     )
     distname = f"{ctx.spec.pn}_{new_ver}_amd64.deb"
-    dl = download_file(WPS_PROXY_PREFIX + upstream_url, ctx.work / distname)
+    dl = download_file(sign_wps_url(upstream_url), ctx.work / distname)
 
     eb_text = old_eb.read_text(encoding="utf-8")
     eb_new = re.sub(r'^MY_BUILD_ID="[^"]+"', f'MY_BUILD_ID="{build_id}"', eb_text, count=1, flags=re.M)
